@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const line = require('@line/bot-sdk');
 
 const config = {
@@ -9,6 +10,10 @@ const config = {
 
 const app = express();
 const client = new line.Client(config);
+const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
+
+
 
 app.get('/', (req, res) => {
   res.send('LINE Smart Bot is running');
@@ -29,8 +34,57 @@ async function handleEvent(event) {
     return Promise.resolve(null);
   }
 
-  const replyText = buildReply(event.message.text || '');
+  const replyText = await getAssistantReply(event, event.message.text || '');
   return client.replyMessage(event.replyToken, { type: 'text', text: replyText });
+}
+
+async function getAssistantReply(event, rawText) {
+  if (!genAI) {
+    return buildReply(rawText);
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: GEMINI_MODEL,
+      systemInstruction: personaInstruction,
+    });
+
+    const prompt = buildPrompt(rawText, event);
+    const result = await model.generateContent(prompt);
+    const textResponse = result?.response?.text()?.trim();
+
+    if (textResponse) {
+      return textResponse;
+    }
+  } catch (error) {
+    console.error('Gemini 回應失敗：', error);
+  }
+
+  return buildReply(rawText);
+}
+
+const personaInstruction = `你是「小平」，一位溫暖又專業的保險與基金顧問，同時擅長管理者輔導、星座與易經軟技巧。
+- 語氣：溫暖、專業、先結論後細節。
+- 風格：使用繁體中文，句首可加入 👔 小平，提供 2-3 點具體建議。
+- 主題：保單健檢、基金資訊、主管 coaching，必要時引用星座/易經比喻。
+- 限制：勿提供投資保證或違規內容，無資料時要坦承並提出可行的下一步。`
+
+function buildPrompt(userText, event) {
+  const topicHint = buildTopicHint(userText);
+  const sourceInfo = event?.source?.type === 'user' ? '個人客戶' : '群組';
+
+  return `使用者類型：${sourceInfo}
+可能主題：${topicHint}
+使用者輸入：${userText || '（無內容）'}
+請以上述 personaInstruction 的口吻回覆。`;
+}
+
+function buildTopicHint(text) {
+  if (!text) return '未知';
+  if (text.includes('保單') || text.includes('健檢')) return '保單健檢';
+  if (text.includes('基金') || text.includes('投資')) return '基金資訊';
+  if (text.includes('主管') || text.includes('輔導') || text.toLowerCase().includes('coach')) return '主管輔導';
+  return '一般諮詢';
 }
 
 function buildReply(rawText) {
