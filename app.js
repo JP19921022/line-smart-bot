@@ -11,7 +11,7 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-pro';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.0-flash';
 
 
 
@@ -42,8 +42,11 @@ async function handleEvent(event) {
     return Promise.resolve(null);
   }
 
-  const replyText = await getAssistantReply(event, event.message.text || '');
-  return client.replyMessage(event.replyToken, { type: 'text', text: replyText });
+  const userText = event.message.text || '';
+
+  await sendAck(event, userText);
+  const replyText = await getAssistantReply(event, userText);
+  await sendFollowUp(event, replyText);
 }
 
 async function getAssistantReply(event, rawText) {
@@ -69,6 +72,71 @@ async function getAssistantReply(event, rawText) {
   }
 
   return buildReply(rawText);
+}
+
+async function sendAck(event, userText) {
+  try {
+    const message = buildAckMessage(userText);
+    await client.replyMessage(event.replyToken, message);
+  } catch (error) {
+    console.error('回覆 ACK 失敗：', error);
+  }
+}
+
+async function sendFollowUp(event, replyText) {
+  if (!replyText) {
+    return;
+  }
+
+  const target = getReplyTarget(event?.source);
+  if (!target) {
+    console.warn('找不到可推播的對象，略過本次回覆');
+    return;
+  }
+
+  try {
+    await client.pushMessage(target, [{ type: 'text', text: replyText }]);
+  } catch (error) {
+    console.error('推播回覆失敗：', error);
+  }
+}
+
+function buildAckMessage(userText) {
+  const text = buildAckText(userText);
+  const quickReply = buildQuickReplyPayload();
+  return quickReply ? { type: 'text', text, quickReply } : { type: 'text', text };
+}
+
+function buildAckText(userText) {
+  if (!userText) {
+    return '👔 小平：收到，我先記下來，稍後把整理好的建議發給你。';
+  }
+  if (userText.length <= 20) {
+    return `👔 小平：收到「${userText}」，我馬上查一下，等我一下。`;
+  }
+  return '👔 小平：我先把重點記下來，確認清楚後很快回覆你。';
+}
+
+function buildQuickReplyPayload() {
+  const items = [
+    { label: '基金摘要', text: '基金摘要' },
+    { label: '保單健檢', text: '保單健檢' },
+    { label: '主管輔導', text: '主管輔導提點' }
+  ];
+  return {
+    items: items.map((item) => ({
+      type: 'action',
+      action: { type: 'message', label: item.label, text: item.text }
+    }))
+  };
+}
+
+function getReplyTarget(source) {
+  if (!source) return null;
+  if (source.type === 'user' && source.userId) return source.userId;
+  if (source.type === 'group' && source.groupId) return source.groupId;
+  if (source.type === 'room' && source.roomId) return source.roomId;
+  return null;
 }
 
 const personaInstruction = `你是「小平」，溫暖又專業的保險 / 基金顧問兼管理學教練。
