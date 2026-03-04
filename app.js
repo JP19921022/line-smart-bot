@@ -42,6 +42,7 @@ async function handleEvent(event) {
     return Promise.resolve(null);
   }
 
+  await showTypingIndicator(event.source);
   const replyText = await getAssistantReply(event, event.message.text || '');
   return client.replyMessage(event.replyToken, buildResponseMessage(replyText));
 }
@@ -69,6 +70,31 @@ async function getAssistantReply(event, rawText) {
   }
 
   return buildReply(rawText);
+}
+
+async function showTypingIndicator(source, durationSeconds = 15) {
+  if (!source || source.type !== 'user' || !source.userId) {
+    return;
+  }
+
+  const roundedSeconds = Math.min(60, Math.max(5, Math.round(durationSeconds / 5) * 5));
+  const payload = {
+    chatId: source.userId,
+    loadingSeconds: roundedSeconds
+  };
+
+  try {
+    await fetch('https://api.line.me/v2/bot/chat/loading/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.channelAccessToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    console.error('無法顯示輸入中動畫：', error);
+  }
 }
 
 function buildResponseMessage(text) {
