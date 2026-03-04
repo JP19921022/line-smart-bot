@@ -11,12 +11,20 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-pro-latest';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-pro';
 
 
 
 app.get('/', (req, res) => {
   res.send('LINE Smart Bot is running');
+});
+
+app.get('/status', (req, res) => {
+  res.json({
+    service: 'line-smart-bot',
+    geminiReady: Boolean(genAI),
+    model: GEMINI_MODEL,
+  });
 });
 
 app.post('/webhook', line.middleware(config), async (req, res) => {
