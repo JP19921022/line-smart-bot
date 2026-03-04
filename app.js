@@ -10,6 +10,10 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 
+app.get('/', (req, res) => {
+  res.send('LINE Smart Bot is running');
+});
+
 app.post('/webhook', line.middleware(config), async (req, res) => {
   try {
     await Promise.all(req.body.events.map(handleEvent));
@@ -29,6 +33,7 @@ async function handleEvent(event) {
   return client.replyMessage(event.replyToken, { type: 'text', text: replyText });
 }
 
-app.listen(3000, () => {
-  console.log('伺服器運行在 http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`伺服器運行在 http://localhost:${PORT}`);
 });
