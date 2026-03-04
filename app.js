@@ -11,7 +11,7 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.0-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 
 
 
