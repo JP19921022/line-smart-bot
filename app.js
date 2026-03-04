@@ -42,8 +42,14 @@ async function handleEvent(event) {
     return Promise.resolve(null);
   }
 
+  const userText = (event.message.text || '').trim();
+  const structured = await handleStructuredIntent(userText);
+  if (structured) {
+    return client.replyMessage(event.replyToken, structured);
+  }
+
   await showTypingIndicator(event.source);
-  const replyText = await getAssistantReply(event, event.message.text || '');
+  const replyText = await getAssistantReply(event, userText);
   return client.replyMessage(event.replyToken, buildResponseMessage(replyText));
 }
 
@@ -97,8 +103,7 @@ async function showTypingIndicator(source, durationSeconds = 15) {
   }
 }
 
-function buildResponseMessage(text) {
-  const quickReply = buildQuickReplyPayload();
+function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
   return quickReply ? { type: 'text', text, quickReply } : { type: 'text', text };
 }
 
@@ -113,6 +118,116 @@ function buildQuickReplyPayload() {
       type: 'action',
       action: { type: 'message', label: item.label, text: item.text }
     }))
+  };
+}
+
+async function handleStructuredIntent(text) {
+  if (!text) {
+    return null;
+  }
+
+  const normalized = text.toLowerCase();
+
+  if (isWeatherIntent(normalized)) {
+    const weather = await buildWeatherSummary();
+    return buildResponseMessage(weather);
+  }
+
+  if (isTimeIntent(normalized)) {
+    const clock = buildTimeSummary();
+    return buildResponseMessage(clock);
+  }
+
+  if (isPlanIntent(normalized)) {
+    const planText = buildPlanSuggestion();
+    return { type: 'text', text: planText, quickReply: buildPlanQuickReply() };
+  }
+
+  return null;
+}
+
+function isWeatherIntent(text) {
+  return ['天氣', '下雨', '氣溫', '冷嗎', '熱嗎', '穿什麼'].some((kw) => text.includes(kw));
+}
+
+function isTimeIntent(text) {
+  return text.includes('幾點') || text.includes('現在時間') || text.includes('時間?') || text.endsWith('時間');
+}
+
+function isPlanIntent(text) {
+  return ['安排', '行程', '放空', '無聊', '休息', '充電', '提振'].some((kw) => text.includes(kw));
+}
+
+async function buildWeatherSummary() {
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=25.05&longitude=121.53&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m';
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('weather fetch failed');
+    const data = await res.json();
+    const current = data?.current;
+    if (!current) throw new Error('no weather payload');
+    const temp = Math.round(current.temperature_2m);
+    const feelsLike = Math.round(current.apparent_temperature);
+    const humidity = current.relative_humidity_2m;
+    const wind = current.wind_speed_10m;
+    const description = describeWeatherCode(current.weather_code);
+    return `👔 小平：台北現在 ${temp}°C，體感 ${feelsLike}°C，${description}，濕度 ${humidity}% ，風速 ${wind} m/s，外出記得調整穿著。`;
+  } catch (error) {
+    console.error('取得天氣失敗：', error);
+    return '👔 小平：查天氣時遇到點問題，我再補給你最新資訊。';
+  }
+}
+
+function describeWeatherCode(code) {
+  const mapping = {
+    0: '天空晴朗',
+    1: '大多晴朗',
+    2: '有些雲',
+    3: '陰天',
+    45: '有霧',
+    48: '凍霧',
+    51: '飄著細雨',
+    61: '有小雨',
+    63: '有陣雨',
+    65: '雨勢較大',
+    80: '陣雨可能隨時來訪',
+    95: '可能有雷陣雨'
+  };
+  return mapping[code] || '天氣變化大';
+}
+
+function buildTimeSummary() {
+  const formatter = new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    hour: '2-digit',
+    minute: '2-digit',
+    weekday: 'short',
+    month: 'numeric',
+    day: 'numeric'
+  });
+  const now = new Date();
+  const formatted = formatter.format(now);
+  return `👔 小平：現在是台北時間 ${formatted}，我在這裡，隨時幫你處理下一件事。`;
+}
+
+function buildPlanSuggestion() {
+  return [
+    '👔 小平：交給我，這樣安排如何？',
+    '',
+    '30 分鐘：找個舒服的角落，深呼吸 + 白噪音，先把腦袋清乾淨。',
+    '60 分鐘：挑一個對自己好的行動（伸展 / 走動 / 喝溫熱飲），讓身體醒來。',
+    '120 分鐘：把今天想完成的事寫成三個小任務，完成就打 ✔️，動力會回來。'
+  ].join('
+');
+}
+
+function buildPlanQuickReply() {
+  return {
+    items: [
+      { type: 'action', action: { type: 'message', label: '30 分鐘放空', text: '幫我安排 30 分鐘放空' } },
+      { type: 'action', action: { type: 'message', label: '寫工作行程', text: '幫我排工作節奏' } },
+      { type: 'action', action: { type: 'message', label: '基金摘要', text: '基金摘要' } }
+    ]
   };
 }
 
