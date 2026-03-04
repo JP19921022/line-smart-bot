@@ -1,0 +1,97 @@
+{
+  "generatedAt": "2026-03-04T18:41:06.696Z",
+  "entries": [
+    {
+      "id": "kgi-ACCP138-TFO3",
+      "sourceId": "kgi-ACCP138-TFO3",
+      "title": "瀚亞多重收益優化組合基金B類型-美元(本基金得投資於非投資等級之高風險債券基金且配息來源可能為本金)_(月配/現金)",
+      "summary": "投信：瀚亞投信｜類型：全球組合型平衡型｜區域：全球｜規模：164.51億元(台幣) (2026/01/31)｜經理人：鄭夙希｜RR：RR3｜計價：美元｜管理費：1.5000%",
+      "url": "https://kgilife.moneydj.com/w/wr/wr01.djhtm?a=ACCP138-TFO3",
+      "tags": [
+        "fund",
+        "multi-asset",
+        "kgi"
+      ],
+      "fetchedAt": "2026-03-04T18:41:06.696Z",
+      "data": {
+        "company": "瀚亞投信",
+        "manager": "鄭夙希",
+        "size": "164.51億元(台幣) (2026/01/31)",
+        "type": "全球組合型平衡型",
+        "risk": "RR3",
+        "currency": "美元",
+        "region": "全球",
+        "fee": "1.5000"
+      }
+    },
+    {
+      "id": "kgi-ALBT8-TFU6",
+      "sourceId": "kgi-ALBT8-TFU6",
+      "title": "聯博-美國成長基金AP(總報酬月配)級別美元(基金之配息來源可能為本金)",
+      "summary": "類型：單一國家型基金｜規模：8,746 百萬美元(2026/01/31)｜RR：RR4｜計價：美元",
+      "url": "https://kgilife.moneydj.com/w/wb/wb01.djhtm?a=ALBT8-TFU6",
+      "tags": [
+        "fund",
+        "equity",
+        "kgi"
+      ],
+      "fetchedAt": "2026-03-04T18:41:06.696Z",
+      "data": {
+        "company": "",
+        "manager": "",
+        "size": "8,746 百萬美元(2026/01/31)",
+        "type": "單一國家型基金",
+        "risk": "RR4",
+        "currency": "美元",
+        "region": "",
+        "fee": ""
+      }
+    },
+    {
+      "id": "kgi-JFZN3-TFU5",
+      "sourceId": "kgi-JFZN3-TFU5",
+      "title": "摩根投資基金-多重收益基金-JPM多重收益(美元對沖)-A股(穩定月配)(本基金有相當比重投資於非投資等級之高風險債券且配息來源可能為本金)",
+      "summary": "類型：全球型基金｜規模：20,156 百萬美元(2025/12/31)｜RR：RR3｜計價：美元",
+      "url": "https://kgilife.moneydj.com/w/wb/wb01.djhtm?a=JFZN3-TFU5",
+      "tags": [
+        "fund",
+        "equity",
+        "kgi"
+      ],
+      "fetchedAt": "2026-03-04T18:41:06.696Z",
+      "data": {
+        "company": "",
+        "manager": "",
+        "size": "20,156 百萬美元(2025/12/31)",
+        "type": "全球型基金",
+        "risk": "RR3",
+        "currency": "美元",
+        "region": "",
+        "fee": ""
+      }
+    },
+    {
+      "id": "kgi-ACTI71-TFS6",
+      "sourceId": "kgi-ACTI71-TFS6",
+      "title": "聯博多元資產收益組合基金-AI類型(美元)(本基金得投資於非投資等級之高風險債券基金且配息來源可能為本金)_(月配/現金)\n嘉實基金評等 : \n友善列印",
+      "summary": "暫無摘要",
+      "url": "https://kgilife.moneydj.com/w/wr/wr02.djhtm?a=ACTI71-TFS6",
+      "tags": [
+        "fund",
+        "fixed-income",
+        "kgi"
+      ],
+      "fetchedAt": "2026-03-04T18:41:06.696Z",
+      "data": {
+        "company": "",
+        "manager": "",
+        "size": "",
+        "type": "",
+        "risk": "",
+        "currency": "",
+        "region": "",
+        "fee": ""
+      }
+    }
+  ]
+}

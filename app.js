@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const line = require('@line/bot-sdk');
 
@@ -12,7 +14,8 @@ const app = express();
 const client = new line.Client(config);
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
-
+const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
+let knowledgeCache = { entries: [], mtimeMs: 0 };
 
 
 app.get('/', (req, res) => {
@@ -143,6 +146,11 @@ async function handleStructuredIntent(text) {
     return { type: 'text', text: planText, quickReply: buildPlanQuickReply() };
   }
 
+  const fundSnapshot = buildFundSnapshot(text);
+  if (fundSnapshot) {
+    return buildResponseMessage(fundSnapshot);
+  }
+
   return null;
 }
 
@@ -228,6 +236,53 @@ function buildPlanQuickReply() {
       { type: 'action', action: { type: 'message', label: '基金摘要', text: '基金摘要' } }
     ]
   };
+}
+
+function buildFundSnapshot(text) {
+  const normalized = text.toLowerCase();
+  const keywords = ['基金', '基金摘要', '基金快照', '基金資訊'];
+  const idHints = ['accp', 'albt', 'jfzn', 'acti'];
+  const shouldTrigger = keywords.some((kw) => normalized.includes(kw)) || idHints.some((hint) => normalized.includes(hint));
+  if (!shouldTrigger) {
+    return null;
+  }
+
+  const entries = loadKnowledgeEntries();
+  if (!entries.length) {
+    return '👔 小平：資料庫還沒準備好，我再去收集最新基金資訊。';
+  }
+
+  const upperText = text.toUpperCase();
+  const filtered = entries.filter((entry) => {
+    const parts = entry.id.split('-');
+    const code = (parts[1] || '').toUpperCase();
+    return code && upperText.includes(code);
+  });
+
+  const list = (filtered.length ? filtered : entries).slice(0, 4);
+  const lines = list.map((entry, index) => `(${index + 1}) ${entry.title}
+    ${entry.summary}`);
+  const body = ['👔 小平：最新基金快照整理好了：', ...lines].join('\n');
+  return body;
+}
+
+function loadKnowledgeEntries() {
+  try {
+    const stats = fs.statSync(KNOWLEDGE_PATH);
+    if (stats.mtimeMs !== knowledgeCache.mtimeMs) {
+      const raw = fs.readFileSync(KNOWLEDGE_PATH, 'utf-8');
+      const parsed = JSON.parse(raw);
+      knowledgeCache = {
+        entries: parsed.entries || [],
+        mtimeMs: stats.mtimeMs
+      };
+    }
+  } catch (error) {
+    if (knowledgeCache.entries.length === 0) {
+      console.error('無法載入 knowledge entries：', error.message);
+    }
+  }
+  return knowledgeCache.entries;
 }
 
 const personaInstruction = `你是「小平」，溫暖又專業的保險 / 基金顧問兼管理學教練。
