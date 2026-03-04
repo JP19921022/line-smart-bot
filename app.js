@@ -175,7 +175,8 @@ function buildReply(rawText) {
     return '👔 小平：身為管理學大師的輔導夥伴，請描述成員狀況與目標，我會用星座＋易經角度給策略。';
   }
 
-  return '👔 小平：我在，已記錄您的訊息，若是保險/基金/主管議題會優先處理，也可以輸入「保單」「基金」「主管」快速分流。';
+  const snippet = text.length > 24 ? text.slice(0, 24) + '…' : text;
+  return `👔 小平：收到「${snippet}」，我整理一下脈絡，等下就回覆你。`;
 }
 
 const PORT = process.env.PORT || 3000;
