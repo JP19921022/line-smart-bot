@@ -508,7 +508,7 @@ function buildWebSearchMessage(query, entries, options = {}) {
   const { omitLinks = false } = options;
   const keyword = query || '金融焦點';
   const lines = [`【焦點搜尋｜${keyword}】`];
-  const limit = omitLinks ? Math.min(entries.length, 2) : Math.min(entries.length, 3);
+  const limit = omitLinks ? Math.min(entries.length, 2) : Math.min(entries.length, 1);
   entries.slice(0, limit).forEach((item, index) => {
     const source = item.source || '新聞';
     const title = (item.title || '最新快訊').trim();
