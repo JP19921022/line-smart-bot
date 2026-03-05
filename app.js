@@ -340,10 +340,18 @@ async function buildFundSnapshot(text) {
 
   const list = (filtered.length ? filtered : entries).slice(0, 4);
   const timestampLabel = formatFundTimestamp(list[0]?.fetchedAt);
-  const lines = list.map((entry, index) => `(${index + 1}) ${entry.title}
-    ${entry.summary}`);
-  const header = timestampLabel ? `最新基金快照（更新：${timestampLabel}）` : '最新基金快照整理好了：';
-  const body = [header, ...lines].join('\n');
+  const lines = list.map((entry, index) => {
+    const bullets = [
+      entry.data?.navValue && `•最新淨值：${entry.data.navValue}`,
+      entry.data?.type && `•基金類型：${entry.data.type}`,
+      entry.data?.risk && `•風險報酬等級：${entry.data.risk}`
+    ].filter(Boolean).join('\n');
+    return `(${index + 1}) ${entry.title}${bullets ? `\n${bullets}` : ''}`;
+  });
+  const headerLines = timestampLabel
+    ? ['最新基金快照', `（更新：${timestampLabel}）`, '—————————']
+    : ['最新基金快照', '—————————'];
+  const body = [...headerLines, ...lines].join('\n');
   return body;
 }
 
