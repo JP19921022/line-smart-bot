@@ -23,6 +23,7 @@ let knowledgeCache = { entries: [], mtimeMs: 0 };
 
 const BRAVE_CREDENTIALS_PATH = path.resolve(__dirname, 'config', 'brave_credentials.json');
 let BRAVE_API_KEY = process.env.BRAVE_API_KEY || '';
+const CURRENT_COMMIT = process.env.RENDER_GIT_COMMIT || '';
 if (!BRAVE_API_KEY && fs.existsSync(BRAVE_CREDENTIALS_PATH)) {
   try {
     const braveRaw = fs.readFileSync(BRAVE_CREDENTIALS_PATH, 'utf-8');
@@ -45,6 +46,7 @@ app.get('/status', (req, res) => {
     service: 'line-smart-bot',
     geminiReady: Boolean(genAI),
     model: GEMINI_MODEL,
+    commit: CURRENT_COMMIT ? CURRENT_COMMIT.slice(0, 7) : 'local'
   });
 });
 
