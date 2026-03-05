@@ -182,6 +182,7 @@ function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
 function buildQuickReplyPayload() {
   const items = [
     { label: '基金摘要', text: '基金摘要' },
+    { label: '保險新聞', text: '保險新聞' },
     { label: '保單健檢', text: '保單健檢' },
     { label: '主管輔導', text: '主管輔導提點' }
   ];
@@ -218,6 +219,11 @@ async function handleStructuredIntent(text) {
   const fundSnapshot = await buildFundSnapshot(text);
   if (fundSnapshot) {
     return buildResponseMessage(fundSnapshot);
+  }
+
+  const insuranceNews = await buildInsuranceNewsDigest(text);
+  if (insuranceNews) {
+    return buildResponseMessage(insuranceNews);
   }
 
   return null;
@@ -302,7 +308,8 @@ function buildPlanQuickReply() {
     items: [
       { type: 'action', action: { type: 'message', label: '30 分鐘放空', text: '幫我安排 30 分鐘放空' } },
       { type: 'action', action: { type: 'message', label: '寫工作行程', text: '幫我排工作節奏' } },
-      { type: 'action', action: { type: 'message', label: '基金摘要', text: '基金摘要' } }
+      { type: 'action', action: { type: 'message', label: '基金摘要', text: '基金摘要' } },
+      { type: 'action', action: { type: 'message', label: '保險新聞', text: '保險新聞' } }
     ]
   };
 }
@@ -355,6 +362,28 @@ async function buildFundSnapshot(text) {
   const entriesBlock = lines.join('\n\n');
   const body = [headerBlock, entriesBlock].filter(Boolean).join('\n\n');
   return body;
+}
+
+async function buildInsuranceNewsDigest(text) {
+  const normalized = text.toLowerCase();
+  const keywords = ['保險新聞', '保險日報', '保險快訊'];
+  if (!keywords.some((kw) => normalized.includes(kw))) {
+    return null;
+  }
+
+  const previewPath = path.resolve(__dirname, 'knowledge', 'insurance_news_preview.txt');
+  if (fs.existsSync(previewPath)) {
+    try {
+      const content = fs.readFileSync(previewPath, 'utf-8').trim();
+      if (content) {
+        return content;
+      }
+    } catch (error) {
+      console.error('載入保險新聞預覽檔失敗：', error.message);
+    }
+  }
+
+  return '保險新聞摘要正在整理中，稍後會補上最新的保險日報與連結。';
 }
 
 function loadKnowledgeEntries() {
