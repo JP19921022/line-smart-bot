@@ -346,12 +346,14 @@ async function buildFundSnapshot(text) {
       entry.data?.type && `•基金類型：${entry.data.type}`,
       entry.data?.risk && `•風險報酬等級：${entry.data.risk}`
     ].filter(Boolean).join('\n');
-    return `(${index + 1}) ${entry.title}${bullets ? `\n${bullets}` : ''}`;
+    return `【${index + 1}】${entry.title}${bullets ? `\n${bullets}` : ''}`;
   });
   const headerLines = timestampLabel
     ? ['最新基金快照', `（更新：${timestampLabel}）`, '—————————']
     : ['最新基金快照', '—————————'];
-  const body = [...headerLines, ...lines].join('\n');
+  const headerBlock = headerLines.join('\n');
+  const entriesBlock = lines.join('\n\n');
+  const body = [headerBlock, entriesBlock].filter(Boolean).join('\n\n');
   return body;
 }
 
