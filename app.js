@@ -374,11 +374,15 @@ function buildScheduleTimeFlex(text) {
     return null;
   }
   const period = match[1].trim();
-  const hours = [];
-  for (let hour = 9; hour <= 24; hour += 1) {
-    hours.push(`${String(hour).padStart(2, '0')}:00`);
-  }
-  const chunks = chunkArray(hours, 4);
+  const slotMap = {
+    上午: [9, 10, 11, 12],
+    中午: [13, 14, 15, 16],
+    下午: [17, 18, 19, 20],
+    晚上: [21, 22, 23, 24]
+  };
+  const hours = slotMap[period] || Array.from({ length: 16 }, (_, i) => i + 9);
+  const labels = hours.map((hour) => `${String(hour).padStart(2, '0')}:00`);
+  const chunks = chunkArray(labels, 4);
   const bubbles = chunks.map((group, index) => ({
     type: 'bubble',
     body: {
@@ -397,7 +401,7 @@ function buildScheduleTimeFlex(text) {
           action: {
             type: 'message',
             label: time,
-            text: `預約時間:${time}`
+            text: `預約時間:${time} (${period})`
           },
           style: 'secondary',
           height: 'sm'
