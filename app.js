@@ -344,6 +344,9 @@ function buildScheduleQuickReply(text) {
   if (!text) {
     return null;
   }
+  if (/^預約時段[:：]/.test(text) || /^預約時間[:：]/.test(text)) {
+    return null;
+  }
   if (!(text.includes('約時間') || text.includes('預約'))) {
     return null;
   }
