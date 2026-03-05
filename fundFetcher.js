@@ -48,6 +48,15 @@ async function getLatestFundEntries() {
         console.warn(`[warn] parser returned empty data for ${source.id}`);
         continue;
       }
+      try {
+        const navInfo = await parseFundNav(source);
+        if (navInfo?.navValue) {
+          parsed.summary = `最新淨值：${navInfo.navValue}（${navInfo.navDate}）${parsed.summary ? '｜' + parsed.summary : ''}`;
+          parsed.data = Object.assign({}, parsed.data, navInfo);
+        }
+      } catch (navError) {
+        console.error(`[warn] 無法抓取 ${source.id} NAV：`, navError.message);
+      }
       entries.push({
         id: source.id,
         sourceId: source.id,
@@ -123,6 +132,37 @@ async function parseKgiFund(html, source) {
       fee
     }
   };
+}
+
+async function parseFundNav(source) {
+  const navUrl = buildNavUrl(source.url);
+  if (!navUrl) {
+    return null;
+  }
+  const html = await fetchWithEncoding(navUrl, source.encoding || 'utf-8');
+  const $ = cheerio.load(html);
+  const table = $('.table.table-striped').first();
+  if (!table.length) {
+    return null;
+  }
+  const firstRow = table.find('tbody tr').first();
+  const navDate = firstRow.find('td').eq(0).text().trim();
+  const navValue = firstRow.find('td').eq(1).text().trim();
+  if (!navDate || !navValue) {
+    return null;
+  }
+  return { navDate, navValue };
+}
+
+function buildNavUrl(url) {
+  if (!url) return null;
+  if (url.includes('wr01')) {
+    return url.replace('wr01', 'wr02');
+  }
+  if (url.includes('wb01')) {
+    return url.replace('wb01', 'wb02');
+  }
+  return null;
 }
 
 module.exports = {
