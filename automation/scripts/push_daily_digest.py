@@ -21,9 +21,10 @@ if str(ROOT) not in sys.path:
 from scripts import build_insurance_digest as digest  # noqa: E402
 
 DEFAULT_LIMIT = 3
-DEFAULT_TITLE = "基金快訊"
+DEFAULT_TITLE = "保險日報"
 DEFAULT_SUBTITLE = "每日市場重點"
 TARGET_USER_IDS = [uid.strip() for uid in os.getenv("DIGEST_TARGET_USER_IDS", "").split(",") if uid.strip()]
+SOURCE_SLUGS = [slug.strip() for slug in os.getenv("DIGEST_SOURCE_SLUGS", "").split(",") if slug.strip()]
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,6 +56,8 @@ def run_pipeline(target_date: str, limit: int, title: str, subtitle: str) -> tup
         "--cover-output",
         str(cover_path),
     ]
+    for slug in SOURCE_SLUGS:
+        cmd.extend(["--source", slug])
     subprocess.run(cmd, check=True)
     return digest_prefix, cover_path
 
@@ -68,15 +71,28 @@ def load_digest_text(prefix: Path) -> tuple[str, list[str]]:
 
 
 def build_message(items: list[dict], target_date: str) -> str:
-    header = f"【保險快訊｜{target_date}" + "】"
+    header = f"【保險日報｜{target_date}" + "】"
     lines = [header]
     for idx, item in enumerate(items, start=1):
         headline = item["headline"]
         summary = item["summary"]
+        impact = item.get("impact")
+        recommendations = item.get("recommendations", [])
+        source_slug = item.get("source_slug", "")
+        source_url = item.get("source_url", "")
         lines.append(f"{idx}. {headline}")
-        lines.append(f"   - {summary}")
-    lines.append("\n資料來源：內部資料庫")
-    return "\n".join(lines)
+        lines.append(f"   - 50字摘要：{summary}")
+        if impact:
+            lines.append(f"   - 保戶影響：{impact}")
+        if recommendations:
+            lines.append("   - 建議：")
+            for rec in recommendations:
+                lines.append(f"      • {rec}")
+        if source_slug or source_url:
+            lines.append(f"   - 來源：{source_slug} | {source_url}")
+        lines.append("")
+    lines.append("資料來源：內部資料庫")
+    return "\n".join(lines).strip()
 
 
 def upload_cover(path: Path) -> str:

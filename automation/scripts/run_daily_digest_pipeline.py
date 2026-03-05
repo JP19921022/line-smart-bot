@@ -23,10 +23,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the daily digest pipeline")
     parser.add_argument("--date", type=str, help="Target date (YYYY-MM-DD). Defaults to today")
     parser.add_argument("--limit", type=int, default=3, help="Number of articles to include")
+    parser.add_argument("--source", action="append", dest="sources", help="Filter by source slug (repeatable)")
     parser.add_argument("--digest-prefix", type=str, help="Where to save digest files (without extension)")
     parser.add_argument("--cover-output", type=str, help="Path for the generated cover image")
-    parser.add_argument("--cover-title", type=str, default="基金日報")
-    parser.add_argument("--cover-subtitle", type=str, default="自動化市場重點")
+    parser.add_argument("--cover-title", type=str, default="保險日報")
+    parser.add_argument("--cover-subtitle", type=str, default="每日策略重點")
     return parser.parse_args()
 
 
@@ -62,7 +63,7 @@ def main() -> None:
             target_date=target_date,
             start_date=None,
             limit=args.limit,
-            sources=None,
+            sources=args.sources,
         )
         if not rows:
             raise RuntimeError("No articles found for the selected date")

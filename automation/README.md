@@ -17,6 +17,7 @@ To avoid checking secrets into git, the scripts prefer environment variables:
 - `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_CHANNEL_SECRET`
 - `GEMINI_API_KEY`
 - `DIGEST_TARGET_USER_IDS`（可選）：用逗號分隔的 LINE userId，若設定則僅推送給這些帳號。
+- `DIGEST_SOURCE_SLUGS`（可選）：用逗號分隔的資料來源，只會抓取指定的保險／新聞來源。
 
 (Optionally you can drop JSON files under `automation/config/` for local testing.)
 
