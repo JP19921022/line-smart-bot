@@ -88,6 +88,13 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 
 async function handleEvent(event) {
   logUserSource(event);
+  if (event.type === 'postback') {
+    const response = handlePostbackEvent(event);
+    if (!response) {
+      return Promise.resolve(null);
+    }
+    return client.replyMessage(event.replyToken, response);
+  }
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
@@ -102,6 +109,15 @@ async function handleEvent(event) {
   await showTypingIndicator(event.source);
   const replyText = await getAssistantReply(event, userText);
   return client.replyMessage(event.replyToken, buildResponseMessage(replyText));
+}
+
+function handlePostbackEvent(event) {
+  const data = event.postback?.data || '';
+  if (data === 'action=schedule-date') {
+    const date = event.postback?.params?.date || '';
+    return buildScheduleDateResponse(date);
+  }
+  return null;
 }
 
 async function getAssistantReply(event, rawText) {
@@ -350,19 +366,72 @@ function buildScheduleQuickReply(text) {
   if (!(text.includes('約時間') || text.includes('預約'))) {
     return null;
   }
-  const quickItems = ['上午', '中午', '下午', '晚上'].map((label) => ({
+  const today = new Date();
+  const maxDate = new Date(today);
+  maxDate.setMonth(maxDate.getMonth() + 2);
+  const datePickerItem = {
     type: 'action',
     action: {
-      type: 'message',
-      label,
-      text: `預約時段:${label}`
+      type: 'datetimepicker',
+      label: '選日期',
+      data: 'action=schedule-date',
+      mode: 'date',
+      initial: formatDateForPicker(today),
+      min: formatDateForPicker(today),
+      max: formatDateForPicker(maxDate)
     }
-  }));
+  };
   return {
     type: 'text',
-    text: '收到！你想約哪個時段？先選一個方便的時段，我再提供細部時間。',
-    quickReply: { items: quickItems }
+    text: '先選一個想約的日期，我再提供時段選項。',
+    quickReply: { items: [datePickerItem] }
   };
+}
+
+function buildTimeSlotQuickReply() {
+  const slots = ['上午', '中午', '下午', '晚上'];
+  return {
+    items: slots.map((label) => ({
+      type: 'action',
+      action: {
+        type: 'message',
+        label,
+        text: `預約時段:${label}`
+      }
+    }))
+  };
+}
+
+function buildScheduleDateResponse(dateString) {
+  const formatted = formatDisplayDate(dateString);
+  return {
+    type: 'text',
+    text: `收到！你想約 ${formatted}，請選擇時段：`,
+    quickReply: buildTimeSlotQuickReply()
+  };
+}
+
+function formatDateForPicker(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDisplayDate(dateString) {
+  if (!dateString) {
+    return '該日期';
+  }
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short'
+  }).format(date);
 }
 
 
