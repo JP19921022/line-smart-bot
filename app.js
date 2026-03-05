@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const line = require('@line/bot-sdk');
+const memoryStore = require('./memoryStore');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -18,6 +19,8 @@ const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
 const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 const DEBUG_USER_LOG_TOKEN = process.env.DEBUG_USER_LOG_TOKEN || '';
 let knowledgeCache = { entries: [], mtimeMs: 0 };
+
+memoryStore.initMemoryStore();
 
 
 app.get('/', (req, res) => {
@@ -89,6 +92,7 @@ async function handleEvent(event) {
   }
 
   const userText = (event.message.text || '').trim();
+  maybeStoreMemory(event, userText);
   const structured = await handleStructuredIntent(userText);
   if (structured) {
     return client.replyMessage(event.replyToken, structured);
@@ -366,10 +370,16 @@ const fewShotExamples = `客戶：我最近壓力很大，基金都在跌。
 function buildPrompt(userText, event) {
   const topicHint = buildTopicHint(userText);
   const sourceInfo = event?.source?.type === 'user' ? '個人客戶' : '群組';
+  const userId = event?.source?.type === 'user' ? event.source.userId : '';
+  const previousMemories = userId ? memoryStore.getRecentMemories(userId, topicHint, 3) : [];
+  const memoryContext = previousMemories.length ? `使用者之前提過：
+${previousMemories.join('\n')}
+---
+` : '';
 
   return `${fewShotExamples}
 ---
-使用者類型：${sourceInfo}
+${memoryContext}使用者類型：${sourceInfo}
 可能主題：${topicHint}
 使用者輸入：${userText || '（無內容）'}
 請以上述 personaInstruction 的口吻回覆，必要時先共感再給建議。`;
@@ -381,6 +391,34 @@ function buildTopicHint(text) {
   if (text.includes('基金') || text.includes('投資')) return '基金資訊';
   if (text.includes('主管') || text.includes('輔導') || text.toLowerCase().includes('coach')) return '主管輔導';
   return '一般諮詢';
+}
+
+const MEMORY_KEYWORDS = ['保單', '基金', '投資', '主管', '提醒', '紀錄', '記得', '家人', '醫院', '生日', '缺口', '保費', '加碼', '贖回', '壓力'];
+
+function maybeStoreMemory(event, text) {
+  if (!text || !event?.source || event.source.type !== 'user') {
+    return;
+  }
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!shouldStoreMemory(normalized)) {
+    return;
+  }
+  const topic = buildTopicHint(normalized);
+  const summary = summarizeMemory(normalized);
+  memoryStore.saveMemory({ userId: event.source.userId, topic, summary });
+}
+
+function shouldStoreMemory(text) {
+  if (!text || text.length < 8) return false;
+  if (/[0-9]{2,}/.test(text) && /(保費|萬|元|%)/.test(text)) return true;
+  return MEMORY_KEYWORDS.some((kw) => text.includes(kw));
+}
+
+function summarizeMemory(text) {
+  if (text.length <= 60) {
+    return text;
+  }
+  return `${text.slice(0, 57)}...`;
 }
 
 function buildReply(rawText) {

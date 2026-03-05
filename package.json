@@ -15,6 +15,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@line/bot-sdk": "^10.6.0",
+    "better-sqlite3": "^12.6.2",
     "cheerio": "^1.2.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
