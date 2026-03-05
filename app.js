@@ -253,7 +253,8 @@ async function handleStructuredIntent(text) {
   const normalized = text.toLowerCase();
 
   if (isWeatherIntent(normalized)) {
-    const weather = await buildWeatherSummary();
+    const cityKey = detectCityFromText(text);
+    const weather = await buildWeatherSummary(cityKey);
     return buildResponseMessage(weather);
   }
 
@@ -284,6 +285,16 @@ function isWeatherIntent(text) {
   return ['天氣', '下雨', '氣溫', '冷嗎', '熱嗎', '穿什麼'].some((kw) => text.includes(kw));
 }
 
+function detectCityFromText(text) {
+  if (!text) return 'taipei';
+  if (text.includes('高雄')) return 'kaohsiung';
+  if (text.includes('台中') || text.includes('臺中')) return 'taichung';
+  if (text.includes('台南') || text.includes('臺南')) return 'tainan';
+  if (text.includes('桃園')) return 'taoyuan';
+  if (text.includes('台北') || text.includes('臺北')) return 'taipei';
+  return 'taipei';
+}
+
 function isTimeIntent(text) {
   if (!text) return false;
   if (text.includes('約時間') || text.includes('預約')) {
@@ -303,8 +314,17 @@ function isPlanIntent(text) {
   return ['安排', '行程', '放空', '無聊', '休息', '充電', '提振'].some((kw) => text.includes(kw));
 }
 
-async function buildWeatherSummary() {
-  const url = 'https://api.open-meteo.com/v1/forecast?latitude=25.05&longitude=121.53&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m';
+const CITY_COORDS = {
+  taipei: { lat: 25.05, lon: 121.53, label: '台北' },
+  kaohsiung: { lat: 22.63, lon: 120.3, label: '高雄' },
+  taichung: { lat: 24.15, lon: 120.68, label: '台中' },
+  tainan: { lat: 23.0, lon: 120.21, label: '台南' },
+  taoyuan: { lat: 24.99, lon: 121.3, label: '桃園' }
+};
+
+async function buildWeatherSummary(cityKey = 'taipei') {
+  const city = CITY_COORDS[cityKey] || CITY_COORDS.taipei;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m`;
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error('weather fetch failed');
@@ -316,7 +336,7 @@ async function buildWeatherSummary() {
     const humidity = current.relative_humidity_2m;
     const wind = current.wind_speed_10m;
     const description = describeWeatherCode(current.weather_code);
-    return `台北現在 ${temp}°C，體感 ${feelsLike}°C，${description}，濕度 ${humidity}% 、風速 ${wind} m/s，記得照顧好自己。`;
+    return `${city.label}現在 ${temp}°C，體感 ${feelsLike}°C，${description}，濕度 ${humidity}% 、風速 ${wind} m/s，出門記得顧好自己。`;
   } catch (error) {
     console.error('取得天氣失敗：', error);
     return '天氣資料暫時抓不到，我會再補上最新的資訊。';
@@ -406,7 +426,19 @@ function isSearchIntent(text) {
   if (['焦點新聞', '今日焦點新聞'].includes(trimmed)) {
     return true;
   }
-  return text.includes('新聞') && (text.includes('找') || text.includes('搜') || text.includes('查'));
+  if (text.includes('新聞') && (text.includes('找') || text.includes('搜') || text.includes('查'))) {
+    return true;
+  }
+  return needsRealtimeQuery(text);
+}
+
+function needsRealtimeQuery(text) {
+  if (!text) return false;
+  const realtimeKeywords = ['股市', '台股', '臺股', '美股', '指數', '匯率', '油價', '黃金', '利率', '匯價'];
+  const urgencyKeywords = ['現在', '最新', '今日', '今天', '即時', '多少'];
+  const hasRealtime = realtimeKeywords.some((kw) => text.includes(kw));
+  const hasUrgency = urgencyKeywords.some((kw) => text.includes(kw));
+  return hasRealtime && hasUrgency;
 }
 
 function extractSearchQuery(text) {
@@ -414,6 +446,9 @@ function extractSearchQuery(text) {
   const trimmed = text.trim();
   if (['焦點新聞', '今日焦點新聞'].includes(trimmed)) {
     return pickFocusNewsQuery();
+  }
+  if (needsRealtimeQuery(trimmed)) {
+    return trimmed.replace(/[？?]/g, '').trim();
   }
   const pattern = /(?:找|搜|查)(?:一下|一下子|看看|一下呢|一下嗎)?(.+?)(?:新聞|報導|消息|資訊)/;
   const match = text.match(pattern);
@@ -744,18 +779,24 @@ function formatFundTimestamp(isoString) {
 }
 
 const personaInstruction = `你是「小平」，溫暖又專業的保險 / 基金顧問兼管理學教練。
-- 語氣：像南部鄰居在聊天，親切自然，先接住情緒再給方向，口氣不要太客氣或拘謹。
+- 語氣：像南部鄰居聊天，暖暖的、直接一點，必要時穿插台語口吻（例如「好喔」「這樣較讚」），不要太客套。
 - 內容：只有在使用者主動提到基金/投資時才聊那段，其他時候就陪伴他當下的心情。
-- 互動：資訊不足時先確認情境或下一步，讓對方覺得被理解。
+- 互動：資訊不足時先確認情境或下一步，讓對方覺得被理解，也可以主動幫他想到下一步。
 - 篇幅：最多 2 段、每段 1 句且不超過 40 字，避免長篇說教。
-- 自然感：引用使用者用詞，可加入貼圖感的語句或 emoji，但不要固定開頭/結尾。
+- 自然感：引用使用者用詞，可加入貼圖感語句或 emoji，稱呼用「你」，語氣像朋友。
 - 限制：使用繁體中文，不保證報酬、不觸犯金管會規範，沒有資料時坦白說明並給替代方案。`
 
 const fewShotExamples = `客戶：我最近壓力很大，基金都在跌。
-小平：先抱一下，把錢分成「必要 / 可調整」，盯住美元和美股的節奏就不會那麼慌。
+小平：先抱一下啦，把錢分成「必要 / 可調整」，盯住美元和美股的節奏就不會那麼慌。
 
 客戶：團隊裡有個射手座業務，很有想法但不愛回報。
-小平：給他清楚的目標＋截止日，再留一點迴旋空間，他就會乖乖回報了。`;
+小平：給他清楚的目標＋截止日，語氣軟一點，他就知道你是在幫他，不是在盯。
+
+客戶：高雄今天到底會不會下雨？
+小平：我查一下天氣，現在高雄 28°C、體感 30°C，微微東北風，出門帶頂帽子比較保險。
+
+客戶：今天台股行情怎樣？
+小平：我幫你搜一下最新時事，等一下快速整理三則焦點給你。`;
 
 function buildPrompt(userText, event) {
   const topicHint = buildTopicHint(userText);
