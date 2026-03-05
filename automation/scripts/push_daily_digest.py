@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from datetime import date
@@ -22,6 +23,7 @@ from scripts import build_insurance_digest as digest  # noqa: E402
 DEFAULT_LIMIT = 3
 DEFAULT_TITLE = "基金快訊"
 DEFAULT_SUBTITLE = "每日市場重點"
+TARGET_USER_IDS = [uid.strip() for uid in os.getenv("DIGEST_TARGET_USER_IDS", "").split(",") if uid.strip()]
 
 
 def parse_args() -> argparse.Namespace:
@@ -104,10 +106,14 @@ def broadcast_message(text: str, image_url: str, dry_run: bool) -> None:
     ]
     if image_url:
         cmd.extend(["--image-url", image_url])
+    if TARGET_USER_IDS:
+        for uid in TARGET_USER_IDS:
+            cmd.extend(["--user-id", uid])
     if dry_run:
         print("[dry-run] would run:", " ".join(cmd))
         return
     subprocess.run(cmd, check=True)
+    print("Broadcast sent", "(targeted)" if TARGET_USER_IDS else "")
 
 
 def main() -> None:
