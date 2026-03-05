@@ -338,7 +338,7 @@ async function buildFundSnapshot(text) {
     return code && upperText.includes(code);
   });
 
-  const list = (filtered.length ? filtered : entries).slice(0, 4);
+  const list = (filtered.length ? filtered : entries).slice(0, 3);
   const timestampLabel = formatFundTimestamp(list[0]?.fetchedAt);
   const lines = list.map((entry, index) => {
     const bullets = [

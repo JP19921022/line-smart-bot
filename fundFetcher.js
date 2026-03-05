@@ -20,12 +20,6 @@ const FUND_SOURCES = [
     url: 'https://kgilife.moneydj.com/w/wb/wb01.djhtm?a=JFZN3-TFU5',
     encoding: 'big5',
     tags: ['fund', 'equity', 'kgi']
-  },
-  {
-    id: 'kgi-ACTI71-TFS6',
-    url: 'https://kgilife.moneydj.com/w/wr/wr02.djhtm?a=ACTI71-TFS6',
-    encoding: 'big5',
-    tags: ['fund', 'fixed-income', 'kgi']
   }
 ];
 
