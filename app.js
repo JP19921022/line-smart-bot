@@ -211,6 +211,7 @@ function buildQuickReplyPayload() {
   const items = [
     { label: '基金摘要', text: '基金摘要' },
     { label: '保險新聞', text: '保險新聞' },
+    { label: '焦點新聞', text: '焦點新聞' },
     { label: '保單健檢', text: '保單健檢' },
     { label: '主管輔導', text: '主管輔導提點' }
   ];
@@ -368,7 +369,8 @@ function buildPlanQuickReply() {
       { type: 'action', action: { type: 'message', label: '30 分鐘放空', text: '幫我安排 30 分鐘放空' } },
       { type: 'action', action: { type: 'message', label: '寫工作行程', text: '幫我排工作節奏' } },
       { type: 'action', action: { type: 'message', label: '基金摘要', text: '基金摘要' } },
-      { type: 'action', action: { type: 'message', label: '保險新聞', text: '保險新聞' } }
+      { type: 'action', action: { type: 'message', label: '保險新聞', text: '保險新聞' } },
+      { type: 'action', action: { type: 'message', label: '焦點新聞', text: '焦點新聞' } }
     ]
   };
 }
@@ -398,17 +400,36 @@ async function handleSearchIntent(text) {
 
 function isSearchIntent(text) {
   if (!text) return false;
+  const trimmed = text.trim();
+  if (['焦點新聞', '今日焦點新聞'].includes(trimmed)) {
+    return true;
+  }
   return text.includes('新聞') && (text.includes('找') || text.includes('搜') || text.includes('查'));
 }
 
 function extractSearchQuery(text) {
   if (!text) return '';
+  const trimmed = text.trim();
+  if (['焦點新聞', '今日焦點新聞'].includes(trimmed)) {
+    return pickFocusNewsQuery();
+  }
   const pattern = /(?:找|搜|查)(?:一下|一下子|看看|一下呢|一下嗎)?(.+?)(?:新聞|報導|消息|資訊)/;
   const match = text.match(pattern);
   if (match && match[1]) {
     return match[1].replace(/的$/,'').trim();
   }
   return text.replace(/(找|搜|查|新聞|一下|一下子)/g, '').trim();
+}
+
+function pickFocusNewsQuery() {
+  const seeds = [
+    '金融 焦點 新聞',
+    '保險 時事 快訊',
+    '財經 熱門 議題',
+    '投資 市場 焦點'
+  ];
+  const index = Math.floor(Math.random() * seeds.length);
+  return seeds[index];
 }
 
 async function searchWeb(query, limit = 3) {
