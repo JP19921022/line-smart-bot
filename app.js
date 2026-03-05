@@ -21,6 +21,18 @@ const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 const DEBUG_USER_LOG_TOKEN = process.env.DEBUG_USER_LOG_TOKEN || '';
 let knowledgeCache = { entries: [], mtimeMs: 0 };
 
+const BRAVE_CREDENTIALS_PATH = path.resolve(__dirname, 'config', 'brave_credentials.json');
+let BRAVE_API_KEY = process.env.BRAVE_API_KEY || '';
+if (!BRAVE_API_KEY && fs.existsSync(BRAVE_CREDENTIALS_PATH)) {
+  try {
+    const braveRaw = fs.readFileSync(BRAVE_CREDENTIALS_PATH, 'utf-8');
+    const braveJson = JSON.parse(braveRaw);
+    BRAVE_API_KEY = braveJson.api_key || '';
+  } catch (error) {
+    console.error('無法載入 Brave API 金鑰：', error);
+  }
+}
+
 memoryStore.initMemoryStore();
 
 
@@ -230,6 +242,11 @@ async function handleStructuredIntent(text) {
     return buildResponseMessage(scheduleAck);
   }
 
+  const searchResponse = await handleSearchIntent(text);
+  if (searchResponse) {
+    return searchResponse;
+  }
+
   const normalized = text.toLowerCase();
 
   if (isWeatherIntent(normalized)) {
@@ -354,6 +371,94 @@ function buildPlanQuickReply() {
       { type: 'action', action: { type: 'message', label: '保險新聞', text: '保險新聞' } }
     ]
   };
+}
+
+async function handleSearchIntent(text) {
+  if (!isSearchIntent(text)) {
+    return null;
+  }
+  if (!BRAVE_API_KEY) {
+    return { type: 'text', text: '搜尋服務還沒啟用，再給我一點時間設定。' };
+  }
+  const query = extractSearchQuery(text);
+  if (!query) {
+    return { type: 'text', text: '想搜尋什麼主題？可以試著說「找新聞＋關鍵字」。' };
+  }
+  try {
+    const results = await searchWeb(query, 3);
+    if (!results.length) {
+      return { type: 'text', text: `我找不到「${query}」的即時新聞，要不要換個關鍵字？` };
+    }
+    return buildWebSearchMessage(query, results);
+  } catch (error) {
+    console.error('Brave 搜尋失敗：', error);
+    return { type: 'text', text: '目前搜尋服務暫時無法使用，稍後再試看看。' };
+  }
+}
+
+function isSearchIntent(text) {
+  if (!text) return false;
+  return text.includes('新聞') && (text.includes('找') || text.includes('搜') || text.includes('查'));
+}
+
+function extractSearchQuery(text) {
+  if (!text) return '';
+  const pattern = /(?:找|搜|查)(?:一下|一下子|看看|一下呢|一下嗎)?(.+?)(?:新聞|報導|消息|資訊)/;
+  const match = text.match(pattern);
+  if (match && match[1]) {
+    return match[1].replace(/的$/,'').trim();
+  }
+  return text.replace(/(找|搜|查|新聞|一下|一下子)/g, '').trim();
+}
+
+async function searchWeb(query, limit = 3) {
+  const params = new URLSearchParams({ q: query, count: String(limit) });
+  const url = `https://api.search.brave.com/res/v1/web/search?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: 'application/json',
+      'X-Subscription-Token': BRAVE_API_KEY
+    }
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Brave search error ${res.status}: ${errText}`);
+  }
+  const data = await res.json();
+  const results = data?.web?.results || [];
+  return results.map((item) => ({
+    title: item.title,
+    url: item.url,
+    description: item.description || '',
+    source: item.profile?.name || extractHostname(item.url)
+  }));
+}
+
+function extractHostname(url) {
+  if (!url) return ;
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname;
+  } catch (error) {
+    return url;
+  }
+}
+
+function buildWebSearchMessage(query, entries) {
+  const lines = [`【網路搜尋｜${query}】`];
+  entries.slice(0, 3).forEach((item, index) => {
+    lines.push(`${index + 1}. ${item.title}`);
+    if (item.source) {
+      lines.push(`   來源：${item.source}`);
+    }
+    if (item.description) {
+      lines.push(`   ${item.description}`);
+    }
+    lines.push(`   ${item.url}`);
+  });
+  lines.push('資料來源：Brave Search（即時結果）');
+  return { type: 'text', text: lines.join('
+') };
 }
 
 function buildScheduleQuickReply(text) {
@@ -614,7 +719,7 @@ function formatFundTimestamp(isoString) {
 }
 
 const personaInstruction = `你是「小平」，溫暖又專業的保險 / 基金顧問兼管理學教練。
-- 語氣：像和家人講電話，先接住情緒，再輕聲給方向。
+- 語氣：像南部鄰居在聊天，親切自然，先接住情緒再給方向，口氣不要太客氣或拘謹。
 - 內容：只有在使用者主動提到基金/投資時才聊那段，其他時候就陪伴他當下的心情。
 - 互動：資訊不足時先確認情境或下一步，讓對方覺得被理解。
 - 篇幅：最多 2 段、每段 1 句且不超過 40 字，避免長篇說教。
