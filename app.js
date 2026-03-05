@@ -15,6 +15,7 @@ const client = new line.Client(config);
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
+const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 let knowledgeCache = { entries: [], mtimeMs: 0 };
 
 
@@ -41,6 +42,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 });
 
 async function handleEvent(event) {
+  logUserSource(event);
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
@@ -103,6 +105,27 @@ async function showTypingIndicator(source, durationSeconds = 15) {
     });
   } catch (error) {
     console.error('無法顯示輸入中動畫：', error);
+  }
+}
+
+function logUserSource(event) {
+  try {
+    const userId = event?.source?.userId;
+    if (!userId) {
+      return;
+    }
+    const payload = {
+      at: new Date().toISOString(),
+      userId,
+      sourceType: event.source.type,
+    };
+    const dir = path.dirname(USER_LOG_PATH);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.appendFileSync(USER_LOG_PATH, JSON.stringify(payload) + '\n', 'utf8');
+  } catch (error) {
+    console.error('記錄 userId 失敗：', error);
   }
 }
 
