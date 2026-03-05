@@ -468,18 +468,21 @@ function extractHostname(url) {
 }
 
 function buildWebSearchMessage(query, entries) {
-  const lines = [`【網路搜尋｜${query}】`];
+  const keyword = query || '金融焦點';
+  const lines = [`【焦點搜尋｜${keyword}】`];
   entries.slice(0, 3).forEach((item, index) => {
-    lines.push(`${index + 1}. ${item.title}`);
-    if (item.source) {
-      lines.push(`   來源：${item.source}`);
-    }
-    if (item.description) {
-      lines.push(`   ${item.description}`);
+    const source = item.source || '新聞';
+    const title = item.title?.trim() || '最新快訊';
+    const cleanDescription = (item.description || '').replace(/\s+/g, '');
+    const summary = cleanDescription.slice(0, 30);
+    const needsEllipsis = cleanDescription.length > summary.length;
+    lines.push(`${index + 1}. 【${source}】${title}`);
+    if (summary) {
+      lines.push(`   - ${summary}${needsEllipsis ? '…' : ''}`);
     }
     lines.push(`   ${item.url}`);
   });
-  lines.push('資料來源：Brave Search（即時結果）');
+  lines.push('資料來源：Brave Search（即時）');
   return { type: 'text', text: lines.join('\n') };
 }
 
