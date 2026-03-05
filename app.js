@@ -572,6 +572,7 @@ function formatFxTimestamp(utcString) {
   return `${month}/${day} ${hours}:${minutes} UTC`;
 }
 
+async function searchWeb(query, limit = 3) {
   const params = new URLSearchParams({ q: query, count: String(limit) });
   const url = `https://api.search.brave.com/res/v1/web/search?${params.toString()}`;
   const res = await fetch(url, {
