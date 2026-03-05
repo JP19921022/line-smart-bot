@@ -365,6 +365,7 @@ function buildScheduleQuickReply(text) {
   };
 }
 
+
 function buildScheduleTimeFlex(text) {
   if (!text) {
     return null;
@@ -380,10 +381,11 @@ function buildScheduleTimeFlex(text) {
     下午: [17, 18, 19, 20],
     晚上: [21, 22, 23, 24]
   };
-  const hours = slotMap[period] || Array.from({ length: 16 }, (_, i) => i + 9);
+  const normalized = period.replace(/\s+/g, '');
+  const key = Object.keys(slotMap).find((slot) => normalized.includes(slot)) || normalized;
+  const hours = slotMap[key] || slotMap.上午;
   const labels = hours.map((hour) => `${String(hour).padStart(2, '0')}:00`);
-  const chunks = chunkArray(labels, 4);
-  const bubbles = chunks.map((group, index) => ({
+  const bubble = {
     type: 'bubble',
     body: {
       type: 'box',
@@ -392,30 +394,27 @@ function buildScheduleTimeFlex(text) {
       contents: [
         {
           type: 'text',
-          text: `${period}｜時間選項 ${index + 1}`,
+          text: `${key}｜請選擇時間`,
           weight: 'bold',
           size: 'md'
         },
-        ...group.map((time) => ({
+        ...labels.map((time) => ({
           type: 'button',
           action: {
             type: 'message',
             label: time,
-            text: `預約時間:${time} (${period})`
+            text: `預約時間:${time} (${key})`
           },
           style: 'secondary',
           height: 'sm'
         }))
       ]
     }
-  }));
+  };
   return {
     type: 'flex',
-    altText: `請選擇${period}的預約時間`,
-    contents: {
-      type: 'carousel',
-      contents: bubbles
-    }
+    altText: `請選擇${key}的預約時間`,
+    contents: bubble
   };
 }
 
