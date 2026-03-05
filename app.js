@@ -458,7 +458,7 @@ async function searchWeb(query, limit = 3) {
 }
 
 function extractHostname(url) {
-  if (!url) return ;
+  if (!url) return '';
   try {
     const parsed = new URL(url);
     return parsed.hostname;
@@ -480,8 +480,7 @@ function buildWebSearchMessage(query, entries) {
     lines.push(`   ${item.url}`);
   });
   lines.push('資料來源：Brave Search（即時結果）');
-  return { type: 'text', text: lines.join('
-') };
+  return { type: 'text', text: lines.join('\n') };
 }
 
 function buildScheduleQuickReply(text) {
