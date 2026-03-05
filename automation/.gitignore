@@ -1,0 +1,4 @@
+artifacts/
+knowledge/insurance.db
+config/*.json
+__pycache__/
