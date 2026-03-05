@@ -5,6 +5,7 @@ const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const line = require('@line/bot-sdk');
 const memoryStore = require('./memoryStore');
+const { getLatestFundEntries } = require('./fundFetcher');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -214,7 +215,7 @@ async function handleStructuredIntent(text) {
     return { type: 'text', text: planText, quickReply: buildPlanQuickReply() };
   }
 
-  const fundSnapshot = buildFundSnapshot(text);
+  const fundSnapshot = await buildFundSnapshot(text);
   if (fundSnapshot) {
     return buildResponseMessage(fundSnapshot);
   }
@@ -306,7 +307,7 @@ function buildPlanQuickReply() {
   };
 }
 
-function buildFundSnapshot(text) {
+async function buildFundSnapshot(text) {
   const normalized = text.toLowerCase();
   const keywords = ['基金', '基金摘要', '基金快照', '基金資訊'];
   const idHints = ['accp', 'albt', 'jfzn', 'acti'];
@@ -315,7 +316,17 @@ function buildFundSnapshot(text) {
     return null;
   }
 
-  const entries = loadKnowledgeEntries();
+  let entries = [];
+  try {
+    entries = await getLatestFundEntries();
+  } catch (error) {
+    console.error('無法即時抓取基金資訊：', error.message);
+  }
+
+  if (!entries.length) {
+    entries = loadKnowledgeEntries();
+  }
+
   if (!entries.length) {
     return '基金資料庫暫時沒開啟，我會再補上最新快照。';
   }
@@ -328,9 +339,11 @@ function buildFundSnapshot(text) {
   });
 
   const list = (filtered.length ? filtered : entries).slice(0, 4);
+  const timestampLabel = formatFundTimestamp(list[0]?.fetchedAt);
   const lines = list.map((entry, index) => `(${index + 1}) ${entry.title}
     ${entry.summary}`);
-  const body = ['最新基金快照整理好了：', ...lines].join('\n');
+  const header = timestampLabel ? `最新基金快照（更新：${timestampLabel}）` : '最新基金快照整理好了：';
+  const body = [header, ...lines].join('\n');
   return body;
 }
 
@@ -351,6 +364,19 @@ function loadKnowledgeEntries() {
     }
   }
   return knowledgeCache.entries;
+}
+
+function formatFundTimestamp(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${month}/${day} ${hours}:${minutes}`;
 }
 
 const personaInstruction = `你是「小平」，溫暖又專業的保險 / 基金顧問兼管理學教練。
