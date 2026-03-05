@@ -16,6 +16,7 @@ const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GE
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
 const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
+const DEBUG_USER_LOG_TOKEN = process.env.DEBUG_USER_LOG_TOKEN || '';
 let knowledgeCache = { entries: [], mtimeMs: 0 };
 
 
@@ -29,6 +30,46 @@ app.get('/status', (req, res) => {
     geminiReady: Boolean(genAI),
     model: GEMINI_MODEL,
   });
+});
+
+app.get('/debug/user-ids', (req, res) => {
+  try {
+    if (DEBUG_USER_LOG_TOKEN) {
+      const provided = req.query.token || req.get('x-debug-token');
+      if (provided !== DEBUG_USER_LOG_TOKEN) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
+
+    if (!fs.existsSync(USER_LOG_PATH)) {
+      return res.status(404).json({ error: 'log file not found', path: USER_LOG_PATH });
+    }
+
+    const raw = fs.readFileSync(USER_LOG_PATH, 'utf8');
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const lines = raw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const slice = lines.slice(-limit).reverse();
+    const entries = slice.map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch (error) {
+        return { raw: line, parseError: true };
+      }
+    });
+
+    res.json({
+      count: entries.length,
+      limit,
+      path: USER_LOG_PATH,
+      entries,
+    });
+  } catch (error) {
+    console.error('Unable to serve user id logs:', error);
+    res.status(500).json({ error: 'Unable to read user id logs' });
+  }
 });
 
 app.post('/webhook', line.middleware(config), async (req, res) => {
