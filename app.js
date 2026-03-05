@@ -234,7 +234,18 @@ function isWeatherIntent(text) {
 }
 
 function isTimeIntent(text) {
-  return text.includes('幾點') || text.includes('現在時間') || text.includes('時間?') || text.endsWith('時間');
+  if (!text) return false;
+  if (text.includes('約時間') || text.includes('預約')) {
+    return false;
+  }
+  const trimmed = text.trim();
+  return (
+    trimmed === '現在時間' ||
+    trimmed === '現在幾點' ||
+    trimmed.endsWith('幾點') ||
+    trimmed.includes('現在時間') ||
+    trimmed.includes('現在幾點')
+  );
 }
 
 function isPlanIntent(text) {
@@ -496,6 +507,10 @@ function buildReply(rawText) {
 
   if (/^(hi|hello|hey|嗨|你好)/i.test(text)) {
     return '嗨，我是小平，可以聊保單、基金、主管輔導，或先聊聊最近的心情。';
+  }
+
+  if (text.includes('約時間') || text.includes('預約')) {
+    return '好的，想約哪一天、哪個主題？把大致的時段和重點貼給我，我幫你排。';
   }
 
   if (text.includes('保單') || text.includes('健檢')) {
