@@ -401,6 +401,13 @@ async function handleSearchIntent(text) {
   if (!isSearchIntent(text)) {
     return null;
   }
+  const currencyPair = detectCurrencyPair(text);
+  if (currencyPair) {
+    const fxMessage = await buildFxResponse(currencyPair);
+    if (fxMessage) {
+      return fxMessage;
+    }
+  }
   if (!BRAVE_API_KEY) {
     return { type: 'text', text: '搜尋服務還沒啟用，再給我一點時間設定。' };
   }
@@ -471,7 +478,100 @@ function pickFocusNewsQuery() {
   return seeds[index];
 }
 
-async function searchWeb(query, limit = 3) {
+const CURRENCY_KEYWORDS = {
+  '美元': 'USD',
+  '美金': 'USD',
+  '台幣': 'TWD',
+  '臺幣': 'TWD',
+  '新台幣': 'TWD',
+  '日圓': 'JPY',
+  '日幣': 'JPY',
+  '人民幣': 'CNY',
+  '人民元': 'CNY',
+  '歐元': 'EUR'
+};
+
+async function buildFxResponse(pair) {
+  try {
+    const res = await fetch('https://tw.rter.info/capi.php');
+    if (!res.ok) throw new Error('fx fetch failed');
+    const data = await res.json();
+    const forwardKey = `${pair.base}${pair.quote}`;
+    const reverseKey = `${pair.quote}${pair.base}`;
+    let rateObj = data[forwardKey];
+    let rate = rateObj?.Exrate;
+    if (!rate && data[reverseKey]?.Exrate) {
+      rateObj = data[reverseKey];
+      rate = 1 / data[reverseKey].Exrate;
+    }
+    if (!rate) {
+      return { type: 'text', text: '我暫時找不到這組匯率，等一下再試。' };
+    }
+    const formattedRate = rate.toFixed(3);
+    const timestamp = rateObj?.UTC ? formatFxTimestamp(rateObj.UTC) : '';
+    const baseLabel = currencyCodeToLabel(pair.base);
+    const quoteLabel = currencyCodeToLabel(pair.quote);
+    const timeText = timestamp ? `（${timestamp}）` : '';
+    return {
+      type: 'text',
+      text: `【${baseLabel}/${quoteLabel}】1 ${baseLabel} ≈ ${formattedRate} ${quoteLabel}${timeText}
+資料來源：台灣銀行即時匯率`
+    };
+  } catch (error) {
+    console.error('取得匯率失敗：', error);
+    return { type: 'text', text: '即時匯率現在抓不到，我再幫你留意。' };
+  }
+}
+
+function detectCurrencyPair(text) {
+  if (!text) return null;
+  if (!(text.includes('匯率') || text.includes('換') || text.includes('/'))) {
+    return null;
+  }
+  const matches = [];
+  Object.entries(CURRENCY_KEYWORDS).forEach(([keyword, code]) => {
+    const idx = text.indexOf(keyword);
+    if (idx !== -1) {
+      matches.push({ idx, code });
+    }
+  });
+  if (!matches.length) return null;
+  matches.sort((a, b) => a.idx - b.idx);
+  const base = matches[0].code;
+  const quote = matches[1]?.code || defaultQuoteCurrency(base);
+  if (!quote || base === quote) {
+    return null;
+  }
+  return { base, quote };
+}
+
+function defaultQuoteCurrency(base) {
+  if (base === 'TWD') return 'USD';
+  return 'TWD';
+}
+
+function currencyCodeToLabel(code) {
+  const mapping = {
+    USD: '美元',
+    TWD: '新台幣',
+    JPY: '日圓',
+    CNY: '人民幣',
+    EUR: '歐元'
+  };
+  return mapping[code] || code;
+}
+
+function formatFxTimestamp(utcString) {
+  if (!utcString) return '';
+  const date = new Date(`${utcString} UTC`);
+  if (Number.isNaN(date.getTime())) return utcString;
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${month}/${day} ${hours}:${minutes} UTC`;
+}
+
   const params = new URLSearchParams({ q: query, count: String(limit) });
   const url = `https://api.search.brave.com/res/v1/web/search?${params.toString()}`;
   const res = await fetch(url, {
