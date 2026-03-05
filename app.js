@@ -199,6 +199,21 @@ async function handleStructuredIntent(text) {
     return null;
   }
 
+  const schedulePrompt = buildScheduleQuickReply(text);
+  if (schedulePrompt) {
+    return schedulePrompt;
+  }
+
+  const scheduleTimesFlex = buildScheduleTimeFlex(text);
+  if (scheduleTimesFlex) {
+    return scheduleTimesFlex;
+  }
+
+  const scheduleAck = buildScheduleAcknowledgement(text);
+  if (scheduleAck) {
+    return buildResponseMessage(scheduleAck);
+  }
+
   const normalized = text.toLowerCase();
 
   if (isWeatherIntent(normalized)) {
@@ -323,6 +338,100 @@ function buildPlanQuickReply() {
       { type: 'action', action: { type: 'message', label: '保險新聞', text: '保險新聞' } }
     ]
   };
+}
+
+function buildScheduleQuickReply(text) {
+  if (!text) {
+    return null;
+  }
+  if (!(text.includes('約時間') || text.includes('預約'))) {
+    return null;
+  }
+  const quickItems = ['上午', '中午', '下午', '晚上'].map((label) => ({
+    type: 'action',
+    action: {
+      type: 'message',
+      label,
+      text: `預約時段:${label}`
+    }
+  }));
+  return {
+    type: 'text',
+    text: '收到！你想約哪個時段？先選一個方便的時段，我再提供細部時間。',
+    quickReply: { items: quickItems }
+  };
+}
+
+function buildScheduleTimeFlex(text) {
+  if (!text) {
+    return null;
+  }
+  const match = text.match(/^預約時段[:：]\s*(.+)$/);
+  if (!match) {
+    return null;
+  }
+  const period = match[1].trim();
+  const hours = [];
+  for (let hour = 9; hour <= 24; hour += 1) {
+    hours.push(`${String(hour).padStart(2, '0')}:00`);
+  }
+  const chunks = chunkArray(hours, 4);
+  const bubbles = chunks.map((group, index) => ({
+    type: 'bubble',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      spacing: 'md',
+      contents: [
+        {
+          type: 'text',
+          text: `${period}｜時間選項 ${index + 1}`,
+          weight: 'bold',
+          size: 'md'
+        },
+        ...group.map((time) => ({
+          type: 'button',
+          action: {
+            type: 'message',
+            label: time,
+            text: `預約時間:${time}`
+          },
+          style: 'secondary',
+          height: 'sm'
+        }))
+      ]
+    }
+  }));
+  return {
+    type: 'flex',
+    altText: `請選擇${period}的預約時間`,
+    contents: {
+      type: 'carousel',
+      contents: bubbles
+    }
+  };
+}
+
+function buildScheduleAcknowledgement(text) {
+  if (!text) {
+    return null;
+  }
+  const match = text.match(/^預約時間[:：]\s*(\d{1,2}:\d{2})(?:\s*\((.+)\))?/);
+  if (!match) {
+    return null;
+  }
+  const time = match[1];
+  const period = match[2];
+  const periodLabel = period ? `${period} ` : '';
+  return `收到！先幫你暫留 ${periodLabel}${time}。再告訴我想聊的主題或備註，我一起記下。`;
+}
+
+function chunkArray(arr, size) {
+  const result = [];
+  for (let i = 0; i < arr.length; i += size) {
+    result.push(arr.slice(i, i + size));
+  }
+  return result;
 }
 
 async function buildFundSnapshot(text) {
