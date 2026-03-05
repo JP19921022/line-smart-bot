@@ -409,11 +409,13 @@ async function handleSearchIntent(text) {
     return { type: 'text', text: '想搜尋什麼主題？可以試著說「找新聞＋關鍵字」。' };
   }
   try {
-    const results = await searchWeb(query, 3);
+    const metricMode = needsRealtimeQuery(text);
+    const resultCount = metricMode ? 2 : 3;
+    const results = await searchWeb(query, resultCount);
     if (!results.length) {
-      return { type: 'text', text: `我找不到「${query}」的即時新聞，要不要換個關鍵字？` };
+      return { type: 'text', text: `我找不到「${query}」的即時資訊，要不要換個關鍵字？` };
     }
-    return buildWebSearchMessage(query, results);
+    return buildWebSearchMessage(query, results, { omitLinks: metricMode });
   } catch (error) {
     console.error('Brave 搜尋失敗：', error);
     return { type: 'text', text: '目前搜尋服務暫時無法使用，稍後再試看看。' };
@@ -502,22 +504,26 @@ function extractHostname(url) {
   }
 }
 
-function buildWebSearchMessage(query, entries) {
+function buildWebSearchMessage(query, entries, options = {}) {
+  const { omitLinks = false } = options;
   const keyword = query || '金融焦點';
   const lines = [`【焦點搜尋｜${keyword}】`];
-  entries.slice(0, 3).forEach((item, index) => {
+  const limit = omitLinks ? Math.min(entries.length, 2) : Math.min(entries.length, 3);
+  entries.slice(0, limit).forEach((item, index) => {
     const source = item.source || '新聞';
-    const title = item.title?.trim() || '最新快訊';
+    const title = (item.title || '最新快訊').trim();
     const cleanDescription = (item.description || '').replace(/\s+/g, '');
-    const summary = cleanDescription.slice(0, 30);
+    const summary = cleanDescription.slice(0, 28);
     const needsEllipsis = cleanDescription.length > summary.length;
     lines.push(`${index + 1}. 【${source}】${title}`);
     if (summary) {
       lines.push(`   - ${summary}${needsEllipsis ? '…' : ''}`);
     }
-    lines.push(`   ${item.url}`);
+    if (!omitLinks) {
+      lines.push(`   ${item.url}`);
+    }
   });
-  lines.push('資料來源：Brave Search（即時）');
+  lines.push(omitLinks ? '資料來源：Brave Search 整理' : '資料來源：Brave Search（即時）');
   return { type: 'text', text: lines.join('\n') };
 }
 
