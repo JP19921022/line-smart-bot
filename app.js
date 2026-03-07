@@ -3,6 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const memoryStore = require('./memoryStore');
 const { getLatestFundEntries } = require('./fundFetcher');
@@ -16,6 +17,13 @@ const app = express();
 const client = new line.Client(config);
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
+const openaiClient = process.env.OPENAI_API_KEY
+  ? new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL || undefined
+    })
+  : null;
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.1-codex';
 const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
 const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 const DEBUG_USER_LOG_TOKEN = process.env.DEBUG_USER_LOG_TOKEN || '';
@@ -135,25 +143,40 @@ function handlePostbackEvent(event) {
 }
 
 async function getAssistantReply(event, rawText) {
-  if (!genAI) {
-    return buildReply(rawText);
+  const prompt = buildPrompt(rawText, event);
+
+  if (openaiClient) {
+    try {
+      const response = await openaiClient.responses.create({
+        model: OPENAI_MODEL,
+        input: prompt,
+        temperature: 0.6
+      });
+      const textResponse = response?.output_text?.trim();
+      if (textResponse) {
+        return textResponse;
+      }
+    } catch (error) {
+      console.error('OpenAI 回應失敗：', error);
+    }
   }
 
-  try {
-    const model = genAI.getGenerativeModel({
-      model: GEMINI_MODEL,
-      systemInstruction: personaInstruction,
-    });
+  if (genAI) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: GEMINI_MODEL,
+        systemInstruction: personaInstruction,
+      });
 
-    const prompt = buildPrompt(rawText, event);
-    const result = await model.generateContent(prompt);
-    const textResponse = result?.response?.text()?.trim();
+      const result = await model.generateContent(prompt);
+      const textResponse = result?.response?.text()?.trim();
 
-    if (textResponse) {
-      return textResponse;
+      if (textResponse) {
+        return textResponse;
+      }
+    } catch (error) {
+      console.error('Gemini 回應失敗：', error);
     }
-  } catch (error) {
-    console.error('Gemini 回應失敗：', error);
   }
 
   return buildReply(rawText);

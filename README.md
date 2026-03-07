@@ -32,6 +32,10 @@ npm start
 3. **設定環境變數（Render Dashboard → Environment)**
    - `LINE_CHANNEL_ACCESS_TOKEN`
    - `LINE_CHANNEL_SECRET`
+   - `OPENAI_API_KEY`（必填，使用 GPT-5.1-codex）
+   - `OPENAI_MODEL`（選填，預設 `gpt-5.1-codex`）
+   - `OPENAI_BASE_URL`（選填，若需自訂 OpenAI 相容端點）
+   - `GEMINI_API_KEY` / `GEMINI_MODEL`（備援，可視需要保留）
 4. **部署完成後**
    - Render 會提供固定 HTTPS URL，例如 `https://your-bot.onrender.com`
    - 在 URL 後面加 `/webhook`，填到 LINE Developers Console 的 Webhook URL
