@@ -235,7 +235,6 @@ function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
 function buildQuickReplyPayload() {
   const items = [
     { label: '基金摘要', text: '基金摘要' },
-    { label: '保險新聞', text: '保險新聞' },
     { label: '焦點新聞', text: '焦點新聞' },
     { label: '保單健檢', text: '保單健檢' },
     { label: '主管輔導', text: '主管輔導提點' }
@@ -414,7 +413,6 @@ function buildPlanQuickReply() {
       { type: 'action', action: { type: 'message', label: '30 分鐘放空', text: '幫我安排 30 分鐘放空' } },
       { type: 'action', action: { type: 'message', label: '寫工作行程', text: '幫我排工作節奏' } },
       { type: 'action', action: { type: 'message', label: '基金摘要', text: '基金摘要' } },
-      { type: 'action', action: { type: 'message', label: '保險新聞', text: '保險新聞' } },
       { type: 'action', action: { type: 'message', label: '焦點新聞', text: '焦點新聞' } }
     ]
   };
