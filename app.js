@@ -16,7 +16,7 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-27b0820b3c86c962aafc61f45fe4e3e9';
-const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-c536ebe4c4a19cc30a949fad7c169eeb';
+const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-fb77905e95e87f6501ec8154a610f682';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const openaiClient = process.env.OPENAI_API_KEY
@@ -333,6 +333,10 @@ async function handleStructuredIntent(text, source) {
     return await buildOpportunitySchedulingPrompt(source);
   }
 
+  if (isFundStatusIntent(text, text)) {
+    return await buildFundStatusAck(source);
+  }
+
   if (isCardChangeIntent(normalized)) {
     return await buildCardChangeResponse(source);
   }
@@ -460,6 +464,11 @@ function parseOpportunitySlotSelection(text) {
     return null;
   }
   return { dateLabel: match[1], slotLabel: match[2] };
+}
+
+function isFundStatusIntent(text, original) {
+  if (!text) return false;
+  return text.includes('基金現在狀況') || (original && original.includes('基金現在狀況'));
 }
 
 const CITY_COORDS = {
@@ -694,6 +703,15 @@ async function buildOpportunityConfirmationResponse(selection, source) {
   return {
     type: 'text',
     text: `${name}，暫定 ${selection.dateLabel} ${selection.slotLabel}，到時候我再跟你分享事業機會！`
+  };
+}
+
+async function buildFundStatusAck(source) {
+  const displayName = await fetchDisplayName(source);
+  const prefix = displayName ? `${displayName} ` : '';
+  return {
+    type: 'text',
+    text: `${prefix}好喔！稍等一下！本人看到訊息後會親自再跟您聯絡！麻煩你稍等嘿～`
   };
 }
 
