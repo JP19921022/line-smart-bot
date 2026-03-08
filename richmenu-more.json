@@ -1,0 +1,15 @@
+{
+  "size": { "width": 2500, "height": 1686 },
+  "selected": false,
+  "name": "OC_MoreMenu_v1",
+  "chatBarText": "更多功能",
+  "areas": [
+    { "bounds": { "x": 0, "y": 0, "width": 833, "height": 562 }, "action": { "type": "message", "label": "基金摘要", "text": "基金摘要" } },
+    { "bounds": { "x": 833, "y": 0, "width": 834, "height": 562 }, "action": { "type": "message", "label": "焦點新聞", "text": "焦點新聞" } },
+    { "bounds": { "x": 1667, "y": 0, "width": 833, "height": 562 }, "action": { "type": "message", "label": "保單健檢", "text": "保單健檢" } },
+    { "bounds": { "x": 0, "y": 562, "width": 833, "height": 562 }, "action": { "type": "message", "label": "主管輔導", "text": "主管輔導提點" } },
+    { "bounds": { "x": 833, "y": 562, "width": 834, "height": 562 }, "action": { "type": "message", "label": "客服聯繫", "text": "有事聯繫" } },
+    { "bounds": { "x": 1667, "y": 562, "width": 833, "height": 562 }, "action": { "type": "message", "label": "公司資訊", "text": "公司地址" } },
+    { "bounds": { "x": 0, "y": 1124, "width": 2500, "height": 562 }, "action": { "type": "postback", "label": "返回主選單", "data": "action=show-main" } }
+  ]
+}

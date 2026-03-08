@@ -15,6 +15,8 @@ const config = {
 
 const app = express();
 const client = new line.Client(config);
+const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-7e3b752e72d1c711c3869533d57120e7';
+const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-37de6a31d2537ca17915b38289c48d5d';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const openaiClient = process.env.OPENAI_API_KEY
@@ -111,7 +113,7 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 async function handleEvent(event) {
   logUserSource(event);
   if (event.type === 'postback') {
-    const response = handlePostbackEvent(event);
+    const response = await handlePostbackEvent(event);
     if (!response) {
       return Promise.resolve(null);
     }
@@ -133,13 +135,33 @@ async function handleEvent(event) {
   return client.replyMessage(event.replyToken, buildResponseMessage(replyText));
 }
 
-function handlePostbackEvent(event) {
+async function handlePostbackEvent(event) {
   const data = event.postback?.data || '';
   if (data === 'action=schedule-date') {
     const date = event.postback?.params?.date || '';
     return buildScheduleDateResponse(date);
   }
+  if (data === 'action=show-more') {
+    await switchRichMenuForUser(event.source, MORE_RICH_MENU_ID);
+    return buildResponseMessage('已切換至更多功能選單');
+  }
+  if (data === 'action=show-main') {
+    await switchRichMenuForUser(event.source, MAIN_RICH_MENU_ID);
+    return buildResponseMessage('已返回主選單');
+  }
   return null;
+}
+
+async function switchRichMenuForUser(source, richMenuId) {
+  try {
+    const userId = source?.userId;
+    if (!userId || !richMenuId) {
+      return;
+    }
+    await client.linkRichMenuToUser(userId, richMenuId);
+  } catch (error) {
+    console.error('無法切換 Rich Menu：', error);
+  }
 }
 
 async function getAssistantReply(event, rawText) {
@@ -333,6 +355,11 @@ function isTimeIntent(text) {
 }
 
 function isPlanIntent(text) {
+  if (!text) return false;
+  const trimmed = text.replace(/\s+/g, '');
+  if (trimmed.includes('安排時間') || trimmed.includes('安排會面')) {
+    return false;
+  }
   return ['安排', '行程', '放空', '無聊', '休息', '充電', '提振'].some((kw) => text.includes(kw));
 }
 
@@ -656,7 +683,10 @@ function buildScheduleQuickReply(text) {
   if (/^預約時段[:：]/.test(text) || /^預約時間[:：]/.test(text)) {
     return null;
   }
-  if (!(text.includes('約時間') || text.includes('預約'))) {
+  const normalized = text.replace(/\s+/g, '');
+  const scheduleKeywords = ['約時間', '預約', '安排時間', '安排會面', '排時間', '排個時間'];
+  const shouldTrigger = scheduleKeywords.some((kw) => normalized.includes(kw));
+  if (!shouldTrigger) {
     return null;
   }
   const today = new Date();

@@ -25,6 +25,10 @@ DEFAULT_TITLE = "保險日報"
 DEFAULT_SUBTITLE = "每日市場重點"
 TARGET_USER_IDS = [uid.strip() for uid in os.getenv("DIGEST_TARGET_USER_IDS", "").split(",") if uid.strip()]
 SOURCE_SLUGS = [slug.strip() for slug in os.getenv("DIGEST_SOURCE_SLUGS", "").split(",") if slug.strip()]
+DISABLE_FLAG_PATH = os.getenv(
+    "DIGEST_DISABLE_FLAG_PATH",
+    str(ROOT / "automation" / "config" / "digest_disabled.flag"),
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -133,6 +137,9 @@ def broadcast_message(text: str, image_url: str, dry_run: bool) -> None:
 
 
 def main() -> None:
+    if os.path.exists(DISABLE_FLAG_PATH):
+        print(f"Daily digest push disabled via flag: {DISABLE_FLAG_PATH}")
+        return
     args = parse_args()
     target_date = digest.resolve_date(args.date)
     digest_prefix, cover_path = run_pipeline(target_date, args.limit, args.cover_title, args.cover_subtitle)
