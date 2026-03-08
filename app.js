@@ -16,7 +16,7 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-27b0820b3c86c962aafc61f45fe4e3e9';
-const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-077f433cccf50c3ce876262dc5a2dd97';
+const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-c536ebe4c4a19cc30a949fad7c169eeb';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const openaiClient = process.env.OPENAI_API_KEY
@@ -321,6 +321,18 @@ async function handleStructuredIntent(text, source) {
     return await buildClaimSchedulingPrompt(source);
   }
 
+  const opportunitySlotSelection = parseOpportunitySlotSelection(text);
+  if (opportunitySlotSelection) {
+    return await buildOpportunityConfirmationResponse(opportunitySlotSelection, source);
+  }
+  const opportunityDateSelection = parseOpportunityDateSelection(text);
+  if (opportunityDateSelection) {
+    return buildOpportunityTimePrompt(opportunityDateSelection);
+  }
+  if (isOpportunityIntent(normalized, text)) {
+    return await buildOpportunitySchedulingPrompt(source);
+  }
+
   if (isCardChangeIntent(normalized)) {
     return await buildCardChangeResponse(source);
   }
@@ -423,6 +435,27 @@ function parseClaimDateSelection(text) {
 function parseClaimSlotSelection(text) {
   if (!text) return null;
   const match = text.match(/^理賠時段::(.+?)::(.+)$/);
+  if (!match) {
+    return null;
+  }
+  return { dateLabel: match[1], slotLabel: match[2] };
+}
+
+function isOpportunityIntent(text, original) {
+  if (!text) return false;
+  const trimmed = text.replace(/\s+/g, '');
+  return trimmed.includes('了解事業機會') || (original && original.includes('我想了解業務工作'));
+}
+
+function parseOpportunityDateSelection(text) {
+  if (!text) return null;
+  const match = text.match(/^面談日期::(.+)$/);
+  return match ? match[1] : null;
+}
+
+function parseOpportunitySlotSelection(text) {
+  if (!text) return null;
+  const match = text.match(/^面談時段::(.+?)::(.+)$/);
   if (!match) {
     return null;
   }
@@ -608,6 +641,59 @@ async function buildClaimConfirmationResponse(selection, source) {
   return {
     type: 'text',
     text: `${name}，暫定 ${selection.dateLabel} ${selection.slotLabel}，我再幫你確認，若要調整再告訴我。`
+  };
+}
+
+async function buildOpportunitySchedulingPrompt(source) {
+  const displayName = await fetchDisplayName(source);
+  const prefix = displayName ? `${displayName} ` : '';
+  return {
+    type: 'text',
+    text: `${prefix}好喔！我們約個時間！`,
+    quickReply: { items: buildOpportunityDateQuickReplies() }
+  };
+}
+
+function buildOpportunityDateQuickReplies() {
+  return CLAIM_DATE_OPTIONS.map((label) => ({
+    type: 'action',
+    action: {
+      type: 'message',
+      label,
+      text: `面談日期::${label}`
+    }
+  }));
+}
+
+function buildOpportunityTimePrompt(dateLabel) {
+  return {
+    type: 'text',
+    text: `${dateLabel} 想約什麼時段？`,
+    quickReply: {
+      items: CLAIM_TIME_SLOTS.map((slot) => ({
+        type: 'action',
+        action: {
+          type: 'message',
+          label: slot.label,
+          text: `面談時段::${dateLabel}::${slot.value}`
+        }
+      }))
+    }
+  };
+}
+
+async function buildOpportunityConfirmationResponse(selection, source) {
+  const displayName = await fetchDisplayName(source);
+  const name = displayName || '朋友';
+  if (selection.slotLabel === '自訂時間') {
+    return {
+      type: 'text',
+      text: `${name}，${selection.dateLabel} 想在哪個時間聊聊？直接輸入時間或打給我。`
+    };
+  }
+  return {
+    type: 'text',
+    text: `${name}，暫定 ${selection.dateLabel} ${selection.slotLabel}，到時候我再跟你分享事業機會！`
   };
 }
 
