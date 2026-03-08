@@ -16,7 +16,7 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-27b0820b3c86c962aafc61f45fe4e3e9';
-const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-aa1db93a79a29bb85e3ed97cef4ea82f';
+const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-b3bd5a18bab5f8013f9262daae5487ae';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const openaiClient = process.env.OPENAI_API_KEY
@@ -314,6 +314,10 @@ async function handleStructuredIntent(text, source) {
     return await buildCardChangeResponse(source);
   }
 
+  if (isInsuranceQuestionIntent(normalized, text)) {
+    return await buildInsuranceQuestionResponse(source);
+  }
+
   if (isWeatherIntent(normalized)) {
     const cityKey = detectCityFromText(text);
     const weather = await buildWeatherSummary(cityKey);
@@ -385,6 +389,12 @@ function isCardChangeIntent(text) {
   if (!text) return false;
   const trimmed = text.replace(/\s+/g, '');
   return trimmed.includes('變更信用卡') || trimmed.includes('換信用卡');
+}
+
+function isInsuranceQuestionIntent(text, original) {
+  if (!text) return false;
+  const trimmed = text.replace(/\s+/g, '');
+  return trimmed.includes('保險問題') || (original && original.includes('健平！我想詢問一下我的保險問題')); 
 }
 
 const CITY_COORDS = {
@@ -469,7 +479,7 @@ function buildPlanQuickReply() {
   };
 }
 
-const CARD_CHANGE_OPTIONS = ['全球', '富邦', '宏泰', '新光', '元大', '保誠', '凱基', '安達', '遠雄', '台灣人壽', '友邦'];
+const INSURER_OPTIONS = ['全球', '富邦', '宏泰', '新光', '元大', '保誠', '凱基', '安達', '遠雄', '台灣人壽', '友邦'];
 
 async function buildCardChangeResponse(source) {
   const displayName = await fetchDisplayName(source);
@@ -478,12 +488,31 @@ async function buildCardChangeResponse(source) {
     type: 'text',
     text: `${greeting}！你要變更哪一間呢？`,
     quickReply: {
-      items: CARD_CHANGE_OPTIONS.map((company) => ({
+      items: INSURER_OPTIONS.map((company) => ({
         type: 'action',
         action: {
           type: 'message',
           label: company,
           text: `我要變更${company}信用卡`
+        }
+      }))
+    }
+  };
+}
+
+async function buildInsuranceQuestionResponse(source) {
+  const displayName = await fetchDisplayName(source);
+  const prefix = displayName ? `${displayName} ` : '';
+  return {
+    type: 'text',
+    text: `${prefix}你想知道哪一間的呢？`,
+    quickReply: {
+      items: INSURER_OPTIONS.map((company) => ({
+        type: 'action',
+        action: {
+          type: 'message',
+          label: company,
+          text: `我想詢問${company}的保險`
         }
       }))
     }
