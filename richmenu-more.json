@@ -9,7 +9,7 @@
     { "bounds": { "x": 1667, "y": 120, "width": 833, "height": 420 }, "action": { "type": "message", "label": "申請理賠", "text": "健平！我申請理賠！" } },
     { "bounds": { "x": 0, "y": 640, "width": 833, "height": 560 }, "action": { "type": "message", "label": "了解事業機會", "text": "健平！我想了解業務工作！" } },
     { "bounds": { "x": 833, "y": 640, "width": 834, "height": 560 }, "action": { "type": "message", "label": "詢問私人基金狀況", "text": "健平！我想問一下我的基金現在狀況如何？" } },
-    { "bounds": { "x": 1667, "y": 640, "width": 833, "height": 560 }, "action": { "type": "message", "label": "公司資訊", "text": "公司地址" } },
+    { "bounds": { "x": 1667, "y": 640, "width": 833, "height": 560 }, "action": { "type": "message", "label": "沒什麼事就想聊聊", "text": "健平！我就是想跟你聊聊天！" } },
     { "bounds": { "x": 450, "y": 1340, "width": 1600, "height": 220 }, "action": { "type": "postback", "label": "返回主選單", "data": "action=show-main" } }
   ]
 }
