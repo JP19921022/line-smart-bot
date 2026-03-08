@@ -16,7 +16,7 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-27b0820b3c86c962aafc61f45fe4e3e9';
-const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-888e917ce45a03812b04fa003f4d6632';
+const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-aa1db93a79a29bb85e3ed97cef4ea82f';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const openaiClient = process.env.OPENAI_API_KEY
@@ -125,7 +125,7 @@ async function handleEvent(event) {
 
   const userText = (event.message.text || '').trim();
   maybeStoreMemory(event, userText);
-  const structured = await handleStructuredIntent(userText);
+  const structured = await handleStructuredIntent(userText, event.source);
   if (structured) {
     return client.replyMessage(event.replyToken, structured);
   }
@@ -269,7 +269,21 @@ function buildQuickReplyPayload() {
   };
 }
 
-async function handleStructuredIntent(text) {
+async function fetchDisplayName(source) {
+  try {
+    const userId = source?.userId;
+    if (!userId) {
+      return null;
+    }
+    const profile = await client.getProfile(userId);
+    return profile?.displayName || null;
+  } catch (error) {
+    console.error('取得使用者名稱失敗：', error);
+    return null;
+  }
+}
+
+async function handleStructuredIntent(text, source) {
   if (!text) {
     return null;
   }
@@ -295,6 +309,10 @@ async function handleStructuredIntent(text) {
   }
 
   const normalized = text.toLowerCase();
+
+  if (isCardChangeIntent(normalized)) {
+    return await buildCardChangeResponse(source);
+  }
 
   if (isWeatherIntent(normalized)) {
     const cityKey = detectCityFromText(text);
@@ -361,6 +379,12 @@ function isPlanIntent(text) {
     return false;
   }
   return ['安排', '行程', '放空', '無聊', '休息', '充電', '提振'].some((kw) => text.includes(kw));
+}
+
+function isCardChangeIntent(text) {
+  if (!text) return false;
+  const trimmed = text.replace(/\s+/g, '');
+  return trimmed.includes('變更信用卡') || trimmed.includes('換信用卡');
 }
 
 const CITY_COORDS = {
@@ -442,6 +466,27 @@ function buildPlanQuickReply() {
       { type: 'action', action: { type: 'message', label: '基金摘要', text: '基金摘要' } },
       { type: 'action', action: { type: 'message', label: '焦點新聞', text: '焦點新聞' } }
     ]
+  };
+}
+
+const CARD_CHANGE_OPTIONS = ['全球', '富邦', '宏泰', '新光', '元大', '保誠', '凱基', '安達', '遠雄', '台灣人壽', '友邦'];
+
+async function buildCardChangeResponse(source) {
+  const displayName = await fetchDisplayName(source);
+  const greeting = displayName ? `哈囉 ${displayName}` : '哈囉';
+  return {
+    type: 'text',
+    text: `${greeting}！你要變更哪一間呢？`,
+    quickReply: {
+      items: CARD_CHANGE_OPTIONS.map((company) => ({
+        type: 'action',
+        action: {
+          type: 'message',
+          label: company,
+          text: `我要變更${company}信用卡`
+        }
+      }))
+    }
   };
 }
 

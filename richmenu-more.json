@@ -4,7 +4,7 @@
   "name": "OC_MoreMenu_v1",
   "chatBarText": "更多功能",
   "areas": [
-    { "bounds": { "x": 0, "y": 120, "width": 833, "height": 420 }, "action": { "type": "message", "label": "基金摘要", "text": "基金摘要" } },
+    { "bounds": { "x": 0, "y": 120, "width": 833, "height": 420 }, "action": { "type": "message", "label": "變更信用卡", "text": "變更信用卡" } },
     { "bounds": { "x": 833, "y": 120, "width": 834, "height": 420 }, "action": { "type": "message", "label": "焦點新聞", "text": "焦點新聞" } },
     { "bounds": { "x": 1667, "y": 120, "width": 833, "height": 420 }, "action": { "type": "message", "label": "保單健檢", "text": "保單健檢" } },
     { "bounds": { "x": 0, "y": 640, "width": 833, "height": 560 }, "action": { "type": "message", "label": "主管輔導", "text": "主管輔導提點" } },
