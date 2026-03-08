@@ -25,7 +25,7 @@ const openaiClient = process.env.OPENAI_API_KEY
       baseURL: process.env.OPENAI_BASE_URL || undefined
     })
   : null;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5-nano';
 const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
 const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 const DEBUG_USER_LOG_TOKEN = process.env.DEBUG_USER_LOG_TOKEN || '';
