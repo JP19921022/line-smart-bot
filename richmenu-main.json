@@ -7,6 +7,6 @@
     { "bounds": { "x": 0, "y": 0, "width": 2500, "height": 1124 }, "action": { "type": "postback", "label": "更多功能", "data": "action=show-more" } },
     { "bounds": { "x": 0, "y": 1124, "width": 833, "height": 562 }, "action": { "type": "message", "label": "安排時間", "text": "安排時間" } },
     { "bounds": { "x": 833, "y": 1124, "width": 834, "height": 562 }, "action": { "type": "message", "label": "有事詢問", "text": "有事詢問" } },
-    { "bounds": { "x": 1667, "y": 1124, "width": 833, "height": 562 }, "action": { "type": "message", "label": "公司地址", "text": "公司地址" } }
+    { "bounds": { "x": 1667, "y": 1124, "width": 833, "height": 562 }, "action": { "type": "uri", "label": "公司地址", "uri": "https://maps.app.goo.gl/sAg2jQYiKYAEXWqd9?g_st=ic" } }
   ]
 }

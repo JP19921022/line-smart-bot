@@ -15,7 +15,7 @@ const config = {
 
 const app = express();
 const client = new line.Client(config);
-const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-27b0820b3c86c962aafc61f45fe4e3e9';
+const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-b2bfa6561bf8e564570f7c99becf2540';
 const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-a02a99359e74ad97a7a8336335e7a916';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
