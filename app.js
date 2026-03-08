@@ -16,7 +16,7 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-27b0820b3c86c962aafc61f45fe4e3e9';
-const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-b3bd5a18bab5f8013f9262daae5487ae';
+const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-077f433cccf50c3ce876262dc5a2dd97';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const openaiClient = process.env.OPENAI_API_KEY
@@ -309,6 +309,17 @@ async function handleStructuredIntent(text, source) {
   }
 
   const normalized = text.toLowerCase();
+  const claimSlotSelection = parseClaimSlotSelection(text);
+  if (claimSlotSelection) {
+    return await buildClaimConfirmationResponse(claimSlotSelection, source);
+  }
+  const claimDateSelection = parseClaimDateSelection(text);
+  if (claimDateSelection) {
+    return buildClaimTimePrompt(claimDateSelection);
+  }
+  if (isClaimIntent(normalized, text)) {
+    return await buildClaimSchedulingPrompt(source);
+  }
 
   if (isCardChangeIntent(normalized)) {
     return await buildCardChangeResponse(source);
@@ -394,7 +405,28 @@ function isCardChangeIntent(text) {
 function isInsuranceQuestionIntent(text, original) {
   if (!text) return false;
   const trimmed = text.replace(/\s+/g, '');
-  return trimmed.includes('保險問題') || (original && original.includes('健平！我想詢問一下我的保險問題')); 
+  return trimmed.includes('保險問題') || (original && original.includes('健平！我想詢問一下我的保險問題'));
+}
+
+function isClaimIntent(text, original) {
+  if (!text) return false;
+  const trimmed = text.replace(/\s+/g, '');
+  return trimmed.includes('申請理賠') || (original && original.includes('我申請理賠'));
+}
+
+function parseClaimDateSelection(text) {
+  if (!text) return null;
+  const match = text.match(/^理賠日期::(.+)$/);
+  return match ? match[1] : null;
+}
+
+function parseClaimSlotSelection(text) {
+  if (!text) return null;
+  const match = text.match(/^理賠時段::(.+?)::(.+)$/);
+  if (!match) {
+    return null;
+  }
+  return { dateLabel: match[1], slotLabel: match[2] };
 }
 
 const CITY_COORDS = {
@@ -480,6 +512,13 @@ function buildPlanQuickReply() {
 }
 
 const INSURER_OPTIONS = ['全球', '富邦', '宏泰', '新光', '元大', '保誠', '凱基', '安達', '遠雄', '台灣人壽', '友邦'];
+const CLAIM_DATE_OPTIONS = ['今天', '明天', '後天', '這週末', '下週'];
+const CLAIM_TIME_SLOTS = [
+  { label: '上午', value: '上午 09:00-12:00' },
+  { label: '下午', value: '下午 13:00-17:00' },
+  { label: '晚上', value: '晚上 19:00-21:00' },
+  { label: '自訂', value: '自訂時間' }
+];
 
 async function buildCardChangeResponse(source) {
   const displayName = await fetchDisplayName(source);
@@ -516,6 +555,59 @@ async function buildInsuranceQuestionResponse(source) {
         }
       }))
     }
+  };
+}
+
+async function buildClaimSchedulingPrompt(source) {
+  const displayName = await fetchDisplayName(source);
+  const prefix = displayName ? `${displayName} ` : '';
+  return {
+    type: 'text',
+    text: `${prefix}好喔！我們約個時間！`,
+    quickReply: { items: buildClaimDateQuickReplies() }
+  };
+}
+
+function buildClaimDateQuickReplies() {
+  return CLAIM_DATE_OPTIONS.map((label) => ({
+    type: 'action',
+    action: {
+      type: 'message',
+      label,
+      text: `理賠日期::${label}`
+    }
+  }));
+}
+
+function buildClaimTimePrompt(dateLabel) {
+  return {
+    type: 'text',
+    text: `${dateLabel} 哪個時段方便？`,
+    quickReply: {
+      items: CLAIM_TIME_SLOTS.map((slot) => ({
+        type: 'action',
+        action: {
+          type: 'message',
+          label: slot.label,
+          text: `理賠時段::${dateLabel}::${slot.value}`
+        }
+      }))
+    }
+  };
+}
+
+async function buildClaimConfirmationResponse(selection, source) {
+  const displayName = await fetchDisplayName(source);
+  const name = displayName || '朋友';
+  if (selection.slotLabel === '自訂時間') {
+    return {
+      type: 'text',
+      text: `${name}，${selection.dateLabel} 想約幾點？直接輸入時間或打給我，我幫你安排。`
+    };
+  }
+  return {
+    type: 'text',
+    text: `${name}，暫定 ${selection.dateLabel} ${selection.slotLabel}，我再幫你確認，若要調整再告訴我。`
   };
 }
 
@@ -948,8 +1040,8 @@ async function buildFundSnapshot(text) {
     return `【${index + 1}】${entry.title}${bullets ? `\n${bullets}` : ''}`;
   });
   const headerLines = timestampLabel
-    ? ['最新基金快照', `（更新：${timestampLabel}）`, '—————————']
-    : ['最新基金快照', '—————————'];
+    ? ['最新基金快照', `（更新：${timestampLabel}）`, '---------']
+    : ['最新基金快照', '---------'];
   const headerBlock = headerLines.join('\n');
   const entriesBlock = lines.join('\n\n');
   const body = [headerBlock, entriesBlock].filter(Boolean).join('\n\n');
