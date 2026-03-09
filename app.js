@@ -193,7 +193,6 @@ async function getAssistantReply(event, rawText) {
       const response = await openaiClient.responses.create({
         model: OPENAI_MODEL,
         input: prompt,
-        temperature: 0.6
       });
       const textResponse = response?.output_text?.trim();
       if (textResponse) {
@@ -1671,6 +1670,7 @@ function upsertContactFromEvent(event) {
     }
 
     fs.writeFileSync(file, JSON.stringify(contacts, null, 2), 'utf8');
+    console.log(`[CAPTURE] userId=${userId} updated at ${now}`);
   } catch (e) {
     console.error('upsertContactFromEvent error:', e);
   }
