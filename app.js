@@ -1361,23 +1361,79 @@ function buildWarmFlexCarousel() {
       contents: [
         {
           type: 'bubble',
+          hero: {
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1493238792000-8113da705763?auto=format&fit=crop&w=1200&q=80',
+            size: 'full',
+            aspectRatio: '20:13',
+            aspectMode: 'cover'
+          },
           body: {
             type: 'box',
             layout: 'vertical',
+            spacing: 'sm',
             contents: [
               { type: 'text', text: '🌤 先照顧好你的節奏', weight: 'bold', size: 'lg' },
-              { type: 'text', text: '市場有起伏很正常，先穩住步調，比急著追高更重要。', wrap: true, size: 'sm' }
+              { type: 'text', text: '市場有起伏很正常，先穩住步調，比急著追高更重要。', wrap: true, size: 'sm', color: '#555555' }
+            ]
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'button', style: 'primary', action: { type: 'message', label: '我想看簡單建議', text: '請給我本週簡單理財建議' } }
             ]
           }
         },
         {
           type: 'bubble',
+          hero: {
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=1200&q=80',
+            size: 'full',
+            aspectRatio: '20:13',
+            aspectMode: 'cover'
+          },
           body: {
             type: 'box',
             layout: 'vertical',
+            spacing: 'sm',
             contents: [
               { type: 'text', text: '💛 用小步慢慢累積', weight: 'bold', size: 'lg' },
-              { type: 'text', text: '定期定額＋風險分散，讓資產慢慢長大，睡得更安心。', wrap: true, size: 'sm' }
+              { type: 'text', text: '定期定額＋風險分散，讓資產慢慢長大，睡得更安心。', wrap: true, size: 'sm', color: '#555555' }
+            ]
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'button', style: 'secondary', action: { type: 'message', label: '幫我看目前配置', text: '幫我看目前配置是否需要調整' } }
+            ]
+          }
+        },
+        {
+          type: 'bubble',
+          hero: {
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=1200&q=80',
+            size: 'full',
+            aspectRatio: '20:13',
+            aspectMode: 'cover'
+          },
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            spacing: 'sm',
+            contents: [
+              { type: 'text', text: '🤝 有我陪你一起看', weight: 'bold', size: 'lg' },
+              { type: 'text', text: '回覆「預約」，我幫你做一份專屬檢視，不急不壓力。', wrap: true, size: 'sm', color: '#555555' }
+            ]
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'button', style: 'primary', action: { type: 'message', label: '我要預約', text: '我要預約一對一金融健檢' } }
             ]
           }
         }
@@ -1395,23 +1451,82 @@ function buildProFlexCarousel() {
       contents: [
         {
           type: 'bubble',
+          hero: {
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=1200&q=80',
+            size: 'full',
+            aspectRatio: '20:13',
+            aspectMode: 'cover'
+          },
           body: {
             type: 'box',
             layout: 'vertical',
+            spacing: 'sm',
             contents: [
               { type: 'text', text: '📊 市場監測摘要', weight: 'bold', size: 'lg' },
-              { type: 'text', text: '短期波動擴大，建議先檢視股債比與現金水位。', wrap: true, size: 'sm' }
+              { type: 'text', text: '短期波動擴大，建議先檢視股債比與現金水位。', wrap: true, size: 'sm', color: '#555555' }
+            ]
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+
+
+            contents: [
+
+{ type: 'button', style: 'primary', action: { type: 'uri', label: '查看市場來源', uri: 'https://kgilife.moneydj.com/' } }
             ]
           }
         },
         {
           type: 'bubble',
+          hero: {
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
+            size: 'full',
+            aspectRatio: '20:13',
+            aspectMode: 'cover'
+          },
           body: {
             type: 'box',
             layout: 'vertical',
+            spacing: 'sm',
             contents: [
               { type: 'text', text: '🧭 策略建議', weight: 'bold', size: 'lg' },
-              { type: 'text', text: '以分批布局與風險平衡為主，先做配置優化，再談加碼時點。', wrap: true, size: 'sm' }
+              { type: 'text', text: '以分批布局與風險平衡為主，先做配置優化，再談加碼時點。', wrap: true, size: 'sm', color: '#555555' }
+            ]
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'button', style: 'secondary', action: { type: 'message', label: '取得配置建議', text: '請提供我的配置調整建議' } }
+            ]
+          }
+        },
+        {
+          type: 'bubble',
+          hero: {
+            type: 'image',
+            url: 'https://images.unsplash.com/photo-1554224154-26032fced8bd?auto=format&fit=crop&w=1200&q=80',
+            size: 'full',
+            aspectRatio: '20:13',
+            aspectMode: 'cover'
+          },
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            spacing: 'sm',
+            contents: [
+              { type: 'text', text: '✅ 一對一檢視', weight: 'bold', size: 'lg' },
+              { type: 'text', text: '回覆「檢視」，安排專屬理財健檢與執行清單。', wrap: true, size: 'sm', color: '#555555' }
+            ]
+          },
+          footer: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'button', style: 'primary', action: { type: 'message', label: '立即檢視', text: '我要做專屬理財檢視' } }
             ]
           }
         }
