@@ -1,7 +1,7 @@
-require('dotenv').config();
-const express = require('express');
 const fs = require('fs');
 const path = require('path');
+require('dotenv').config();
+const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
@@ -137,7 +137,8 @@ async function handleEvent(event) {
     const summary = await buildMarketMonitorMessage();
     return client.replyMessage(event.replyToken, buildResponseMessage(summary));
   }
-  maybeStoreMemory(event, userText);
+  upsertContactFromEvent(event);
+ maybeStoreMemory(event, userText);
   const structured = await handleStructuredIntent(userText, event.source);
   if (structured) {
     if (structured.delegateAI) {
@@ -155,6 +156,7 @@ async function handleEvent(event) {
 }
 
 async function handlePostbackEvent(event) {
+  upsertContactFromEvent(event);
   const data = event.postback?.data || '';
   if (data === 'action=schedule-date') {
     const date = event.postback?.params?.date || '';
@@ -1634,5 +1636,42 @@ async function buildMarketMonitorMessage() {
   } catch (err) {
     console.error('市場監測抓取失敗:', err);
     return `📊 市場監測摘要\n目前來源抓取失敗，請稍後再試。\n來源：${MARKET_SOURCE_URL}`;
+  }
+}
+
+
+
+function upsertContactFromEvent(event) {
+  try {
+    const userId = event?.source?.userId;
+    if (!userId) return;
+
+    const file = path.join(__dirname, 'contacts.json');
+    let contacts = [];
+    if (fs.existsSync(file)) {
+      contacts = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!Array.isArray(contacts)) contacts = [];
+    }
+
+    const now = new Date().toISOString();
+    const idx = contacts.findIndex(c => c.userId === userId);
+
+    if (idx >= 0) {
+      contacts[idx].last_contact_at = now;
+      if (contacts[idx].enabled === undefined) contacts[idx].enabled = true;
+      if (!contacts[idx].name) contacts[idx].name = '未命名客戶';
+    } else {
+      contacts.push({
+        userId,
+        name: '新客戶',
+        last_contact_at: now,
+        last_care_at: null,
+        enabled: true
+      });
+    }
+
+    fs.writeFileSync(file, JSON.stringify(contacts, null, 2), 'utf8');
+  } catch (e) {
+    console.error('upsertContactFromEvent error:', e);
   }
 }
