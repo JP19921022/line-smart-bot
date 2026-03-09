@@ -132,6 +132,20 @@ async function handleEvent(event) {
   if (userText === '專業理財版') {
     return client.replyMessage(event.replyToken, buildProFlexCarousel());
   }
+
+  if (userText === '市場監測摘要') {
+    return client.replyMessage(event.replyToken, buildResponseMessage(
+`📊 市場監測摘要
+1) 今日盤勢：股債波動擴大，市場偏保守。
+2) 關鍵影響：
+- 高估值板塊回檔壓力升
+- 防禦型資產相對抗震
+- 匯率波動影響海外配置
+3) 建議動作：
+- 先檢視股債比例與現金部位
+- 分批布局，不追高`
+    ));
+  }
   maybeStoreMemory(event, userText);
   const structured = await handleStructuredIntent(userText, event.source);
   if (structured) {
@@ -1474,7 +1488,7 @@ function buildProFlexCarousel() {
 
             contents: [
 
-{ type: 'button', style: 'primary', action: { type: 'uri', label: '查看市場來源', uri: 'https://kgilife.moneydj.com/' } }
+{ type: 'button', style: 'primary', action: { type: 'message', label: '市場監測摘要', text: '市場監測摘要' } }
             ]
           }
         },
