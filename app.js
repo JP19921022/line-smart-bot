@@ -124,6 +124,14 @@ async function handleEvent(event) {
   }
 
   const userText = (event.message.text || '').trim();
+
+  // 先攔截版本按鈕，直接回傳 Flex（不要走 AI）
+  if (userText === '保戶溫暖版') {
+    return client.replyMessage(event.replyToken, buildWarmFlexCarousel());
+  }
+  if (userText === '專業理財版') {
+    return client.replyMessage(event.replyToken, buildProFlexCarousel());
+  }
   maybeStoreMemory(event, userText);
   const structured = await handleStructuredIntent(userText, event.source);
   if (structured) {
@@ -1342,3 +1350,72 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`伺服器運行在 http://localhost:${PORT}`);
 });
+
+
+function buildWarmFlexCarousel() {
+  return {
+    type: 'flex',
+    altText: '保戶溫暖版',
+    contents: {
+      type: 'carousel',
+      contents: [
+        {
+          type: 'bubble',
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'text', text: '🌤 先照顧好你的節奏', weight: 'bold', size: 'lg' },
+              { type: 'text', text: '市場有起伏很正常，先穩住步調，比急著追高更重要。', wrap: true, size: 'sm' }
+            ]
+          }
+        },
+        {
+          type: 'bubble',
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'text', text: '💛 用小步慢慢累積', weight: 'bold', size: 'lg' },
+              { type: 'text', text: '定期定額＋風險分散，讓資產慢慢長大，睡得更安心。', wrap: true, size: 'sm' }
+            ]
+          }
+        }
+      ]
+    }
+  };
+}
+
+function buildProFlexCarousel() {
+  return {
+    type: 'flex',
+    altText: '專業理財版',
+    contents: {
+      type: 'carousel',
+      contents: [
+        {
+          type: 'bubble',
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'text', text: '📊 市場監測摘要', weight: 'bold', size: 'lg' },
+              { type: 'text', text: '短期波動擴大，建議先檢視股債比與現金水位。', wrap: true, size: 'sm' }
+            ]
+          }
+        },
+        {
+          type: 'bubble',
+          body: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              { type: 'text', text: '🧭 策略建議', weight: 'bold', size: 'lg' },
+              { type: 'text', text: '以分批布局與風險平衡為主，先做配置優化，再談加碼時點。', wrap: true, size: 'sm' }
+            ]
+          }
+        }
+      ]
+    }
+  };
+}
