@@ -263,6 +263,8 @@ function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
 function buildQuickReplyPayload() {
   const items = [
     { label: '基金摘要', text: '基金摘要' },
+    { label: '保戶溫暖版', text: '保戶溫暖版' },
+    { label: '專業理財版', text: '專業理財版' },
     { label: '焦點新聞', text: '焦點新聞' },
     { label: '保單健檢', text: '保單健檢' },
     { label: '主管輔導', text: '主管輔導提點' }
