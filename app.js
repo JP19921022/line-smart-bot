@@ -1353,6 +1353,28 @@ function buildReply(rawText) {
 }
 
 const PORT = process.env.PORT || 3000;
+
+app.get('/admin/contacts/export', (req, res) => {
+  try {
+    const token = req.query.token;
+    const expected = process.env.ADMIN_EXPORT_TOKEN;
+
+    if (!expected) return res.status(500).json({ error: 'ADMIN_EXPORT_TOKEN not set' });
+    if (!token || token !== expected) return res.status(401).json({ error: 'unauthorized' });
+
+    const fs = require('fs');
+    const path = require('path');
+    const file = path.join(__dirname, 'contacts.json');
+
+    if (!fs.existsSync(file)) return res.json([]);
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return res.json(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.error('export contacts error:', err);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`伺服器運行在 http://localhost:${PORT}`);
 });
