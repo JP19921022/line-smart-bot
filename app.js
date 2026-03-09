@@ -134,17 +134,8 @@ async function handleEvent(event) {
   }
 
   if (userText === '市場監測摘要') {
-    return client.replyMessage(event.replyToken, buildResponseMessage(
-`📊 市場監測摘要
-1) 今日盤勢：股債波動擴大，市場偏保守。
-2) 關鍵影響：
-- 高估值板塊回檔壓力升
-- 防禦型資產相對抗震
-- 匯率波動影響海外配置
-3) 建議動作：
-- 先檢視股債比例與現金部位
-- 分批布局，不追高`
-    ));
+    const summary = await buildMarketMonitorMessage();
+    return client.replyMessage(event.replyToken, buildResponseMessage(summary));
   }
   maybeStoreMemory(event, userText);
   const structured = await handleStructuredIntent(userText, event.source);
@@ -1547,4 +1538,101 @@ function buildProFlexCarousel() {
       ]
     }
   };
+}
+
+
+const MARKET_SOURCE_URL = 'https://www.moneydj.com/kmdj/common/listnewarticles.aspx?svc=NW&a=X0400000';
+const MARKET_KEYWORDS = ['總體經濟','國際股市','外匯','債券','國內外財經','台股','產業','商品原物料','報告','基金','期權'];
+
+function toTaipeiTimeString(date = new Date()) {
+  return new Intl.DateTimeFormat('zh-TW', {
+    timeZone: 'Asia/Taipei',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function stripHtml(s = '') {
+  return s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function dedupeByTitle(items) {
+  const seen = new Set();
+  const out = [];
+  for (const it of items) {
+    const k = (it.title || '').trim();
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(it);
+  }
+  return out;
+}
+
+async function fetchMarketArticles(limit = 25) {
+  const res = await fetch(MARKET_SOURCE_URL, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (line-bot market monitor)' }
+  });
+  if (!res.ok) throw new Error(`抓取失敗: ${res.status}`);
+  const html = await res.text();
+
+  const linkRegex = /<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const rows = [];
+  let m;
+  while ((m = linkRegex.exec(html)) !== null) {
+    const href = m[1] || '';
+    const title = stripHtml(m[2] || '');
+    if (!title || title.length < 6) continue;
+    if (!/moneydj|kmdj|\/x\//i.test(href) && !/\.aspx/i.test(href)) continue;
+
+    const fullUrl = href.startsWith('http')
+      ? href
+      : `https://www.moneydj.com${href.startsWith('/') ? '' : '/'}${href}`;
+    rows.push({ title, url: fullUrl });
+  }
+  return dedupeByTitle(rows).slice(0, limit);
+}
+
+function filterByKeywords(items, keywords = MARKET_KEYWORDS, pick = 5) {
+  return items.filter(it => keywords.some(k => it.title.includes(k))).slice(0, pick);
+}
+
+function buildMarketSummaryText(filtered) {
+  const ts = toTaipeiTimeString();
+  const top = filtered.slice(0, 3);
+  const impact = top.map((x, i) => `- ${i + 1}. ${x.title}`).join('\n') || '- 今日無明確關鍵分類新聞';
+  const refs = filtered.slice(0, 3).map((x, i) => `${i + 1}) ${x.title}\n${x.url}`).join('\n\n');
+
+  return [
+    `📊 市場監測摘要（${ts}）`,
+    '',
+    '1) 今日盤勢：',
+    top.length ? '市場訊號偏觀望，建議先控管部位與風險。' : '今日資料偏少，建議保守觀察。',
+    '',
+    '2) 關鍵影響：',
+    impact,
+    '',
+    '3) 建議動作：',
+    '- 先檢視股債配置與現金水位',
+    '- 分批布局，不追高',
+    '',
+    '📎 來源（MoneyDJ）：',
+    refs || MARKET_SOURCE_URL,
+    '',
+    '⚠️ 本內容為資訊整理，非投資建議。'
+  ].join('\n');
+}
+
+async function buildMarketMonitorMessage() {
+  try {
+    const raw = await fetchMarketArticles(25);
+    const filtered = filterByKeywords(raw, MARKET_KEYWORDS, 5);
+    return buildMarketSummaryText(filtered.length ? filtered : raw.slice(0, 5));
+  } catch (err) {
+    console.error('市場監測抓取失敗:', err);
+    return `📊 市場監測摘要\n目前來源抓取失敗，請稍後再試。\n來源：${MARKET_SOURCE_URL}`;
+  }
 }
