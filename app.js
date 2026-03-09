@@ -137,7 +137,7 @@ async function handleEvent(event) {
     const summary = await buildMarketMonitorMessage();
     return client.replyMessage(event.replyToken, buildResponseMessage(summary));
   }
-  upsertContactFromEvent(event);
+  await upsertContactFromEvent(event);
  maybeStoreMemory(event, userText);
   const structured = await handleStructuredIntent(userText, event.source);
   if (structured) {
@@ -156,7 +156,7 @@ async function handleEvent(event) {
 }
 
 async function handlePostbackEvent(event) {
-  upsertContactFromEvent(event);
+  await upsertContactFromEvent(event);
   const data = event.postback?.data || '';
   if (data === 'action=schedule-date') {
     const date = event.postback?.params?.date || '';
@@ -252,6 +252,7 @@ async function showTypingIndicator(source, durationSeconds = 15) {
 function logUserSource(event) {
   try {
     const userId = event?.source?.userId;
+    const displayName = await getLineDisplayName(userId);
     if (!userId) {
       return;
     }
@@ -1662,7 +1663,26 @@ async function buildMarketMonitorMessage() {
 
 
 
-function upsertContactFromEvent(event) {
+
+async function getLineDisplayName(userId) {
+  try {
+    const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+    if (!token || !userId) return null;
+
+    const r = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!r.ok) return null;
+
+    const data = await r.json();
+    return data?.displayName || null;
+  } catch (e) {
+    console.error('getLineDisplayName error:', e);
+    return null;
+  }
+}
+
+async function upsertContactFromEvent(event) {
   try {
     const userId = event?.source?.userId;
     if (!userId) return;
@@ -1680,11 +1700,12 @@ function upsertContactFromEvent(event) {
     if (idx >= 0) {
       contacts[idx].last_contact_at = now;
       if (contacts[idx].enabled === undefined) contacts[idx].enabled = true;
-      if (!contacts[idx].name) contacts[idx].name = '未命名客戶';
+      if (displayName) contacts[idx].name = displayName;
+      else if (!contacts[idx].name) contacts[idx].name = '未命名客戶';
     } else {
       contacts.push({
         userId,
-        name: '新客戶',
+        name: displayName || '新客戶',
         last_contact_at: now,
         last_care_at: null,
         enabled: true
