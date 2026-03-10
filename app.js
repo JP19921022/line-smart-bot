@@ -136,6 +136,12 @@ async function handleEvent(event) {
     setManualMode(event?.source?.userId, false);
     return client.replyMessage(event.replyToken, buildResponseMessage('已結束手動聊天：系統恢復自動回覆。'));
   }
+
+  // 全域緊急停回覆
+  if (isGlobalManualMode()) {
+    return Promise.resolve(null);
+  }
+
   if (isManualMode(event?.source?.userId)) {
     return Promise.resolve(null);
   }
@@ -1389,6 +1395,33 @@ app.get('/admin/contacts/export', (req, res) => {
   }
 });
 
+app.get('/admin/global-manual', (req, res) => {
+  try {
+    const token = req.query.token;
+    const expected = process.env.ADMIN_EXPORT_TOKEN;
+    if (!expected) return res.status(500).json({ error: 'ADMIN_EXPORT_TOKEN not set' });
+    if (!token || token !== expected) return res.status(401).json({ error: 'unauthorized' });
+    return res.json({ enabled: isGlobalManualMode() });
+  } catch (err) {
+    console.error('global-manual get error:', err);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+app.post('/admin/global-manual', express.json(), (req, res) => {
+  try {
+    const token = req.query.token || req.headers['x-admin-token'];
+    const expected = process.env.ADMIN_EXPORT_TOKEN;
+    if (!expected) return res.status(500).json({ error: 'ADMIN_EXPORT_TOKEN not set' });
+    if (!token || token !== expected) return res.status(401).json({ error: 'unauthorized' });
+    setGlobalManualMode(Boolean(req.body?.enabled));
+    return res.json({ ok: true, enabled: isGlobalManualMode() });
+  } catch (err) {
+    console.error('global-manual post error:', err);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`伺服器運行在 http://localhost:${PORT}`);
 });
@@ -1718,6 +1751,28 @@ function setManualMode(userId, enabled) {
   }
 }
 
+
+function isGlobalManualMode() {
+  try {
+    const file = path.join(__dirname, 'status', 'global_manual.json');
+    if (!fs.existsSync(file)) return false;
+    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return Boolean(data?.enabled);
+  } catch {
+    return false;
+  }
+}
+
+function setGlobalManualMode(enabled) {
+  try {
+    const dir = path.join(__dirname, 'status');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'global_manual.json');
+    fs.writeFileSync(file, JSON.stringify({ enabled: Boolean(enabled), updated_at: new Date().toISOString() }, null, 2), 'utf8');
+  } catch (e) {
+    console.error('setGlobalManualMode error:', e);
+  }
+}
 
 function isManualMode(userId) {
   try {
