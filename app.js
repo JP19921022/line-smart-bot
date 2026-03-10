@@ -124,6 +124,20 @@ async function handleEvent(event) {
   }
 
   const userText = (event.message.text || '').trim();
+  upsertContactFromEvent(event);
+
+  // 手動聊天模式切換（每位用戶獨立）
+  if (userText === '使用手動聊天') {
+    setManualMode(event?.source?.userId, true);
+    return client.replyMessage(event.replyToken, buildResponseMessage('已切換為手動聊天模式：系統暫停自動回覆。'));
+  }
+  if (userText === '結束手動聊天') {
+    setManualMode(event?.source?.userId, false);
+    return client.replyMessage(event.replyToken, buildResponseMessage('已結束手動聊天：系統恢復自動回覆。'));
+  }
+  if (isManualMode(event?.source?.userId)) {
+    return Promise.resolve(null);
+  }
 
   // 先攔截版本按鈕，直接回傳 Flex（不要走 AI）
   if (userText === '保戶溫暖版') {
@@ -137,7 +151,6 @@ async function handleEvent(event) {
     const summary = await buildMarketMonitorMessage();
     return client.replyMessage(event.replyToken, buildResponseMessage(summary));
   }
-  upsertContactFromEvent(event);
  maybeStoreMemory(event, userText);
   const structured = await handleStructuredIntent(userText, event.source);
   if (structured) {
@@ -1660,7 +1673,94 @@ async function buildMarketMonitorMessage() {
   }
 }
 
+function isManualMode(userId) {
+  try {
+    if (!userId) return false;
+    const file = path.join(__dirname, 'contacts.json');
+    if (!fs.existsSync(file)) return false;
+    const contacts = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const found = Array.isArray(contacts) ? contacts.find(c => c.userId === userId) : null;
+    return Boolean(found?.manual_mode);
+  } catch {
+    return false;
+  }
+}
 
+function setManualMode(userId, enabled) {
+  try {
+    if (!userId) return;
+    const file = path.join(__dirname, 'contacts.json');
+    let contacts = [];
+    if (fs.existsSync(file)) {
+      contacts = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!Array.isArray(contacts)) contacts = [];
+    }
+    const now = new Date().toISOString();
+    const idx = contacts.findIndex(c => c.userId === userId);
+    if (idx >= 0) {
+      contacts[idx].manual_mode = enabled;
+      contacts[idx].manual_mode_updated_at = now;
+    } else {
+      contacts.push({
+        userId,
+        name: '新客戶',
+        last_contact_at: now,
+        last_care_at: null,
+        enabled: true,
+        manual_mode: enabled,
+        manual_mode_updated_at: now
+      });
+    }
+    fs.writeFileSync(file, JSON.stringify(contacts, null, 2), 'utf8');
+  } catch (e) {
+    console.error('setManualMode error:', e);
+  }
+}
+
+
+function isManualMode(userId) {
+  try {
+    if (!userId) return false;
+    const file = path.join(__dirname, 'contacts.json');
+    if (!fs.existsSync(file)) return false;
+    const contacts = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!Array.isArray(contacts)) return false;
+    const c = contacts.find(x => x.userId === userId);
+    return Boolean(c?.manual_mode);
+  } catch {
+    return false;
+  }
+}
+
+function setManualMode(userId, enabled) {
+  try {
+    if (!userId) return;
+    const file = path.join(__dirname, 'contacts.json');
+    let contacts = [];
+    if (fs.existsSync(file)) {
+      contacts = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!Array.isArray(contacts)) contacts = [];
+    }
+    const idx = contacts.findIndex(c => c.userId === userId);
+    if (idx >= 0) {
+      contacts[idx].manual_mode = Boolean(enabled);
+      contacts[idx].manual_updated_at = new Date().toISOString();
+    } else {
+      contacts.push({
+        userId,
+        name: '新客戶',
+        last_contact_at: new Date().toISOString(),
+        last_care_at: null,
+        enabled: true,
+        manual_mode: Boolean(enabled),
+        manual_updated_at: new Date().toISOString()
+      });
+    }
+    fs.writeFileSync(file, JSON.stringify(contacts, null, 2), 'utf8');
+  } catch (e) {
+    console.error('setManualMode error:', e);
+  }
+}
 
 function upsertContactFromEvent(event) {
   try {
