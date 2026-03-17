@@ -1,0 +1,57 @@
+[
+  {
+    "id": "msg_1773769925168_survey_flex",
+    "name": "滿意度評分卡（LINE Flex）",
+    "category": "問卷",
+    "type": "flex",
+    "text": "",
+    "mediaUrl": "",
+    "flexJson": "{\"type\":\"flex\",\"altText\":\"你對我們還滿意嗎？\",\"contents\":{\"type\":\"bubble\",\"size\":\"mega\",\"body\":{\"type\":\"box\",\"layout\":\"vertical\",\"spacing\":\"md\",\"contents\":[{\"type\":\"image\",\"url\":\"https://i.imgur.com/UJ4Wv0D.png\",\"size\":\"sm\",\"align\":\"center\",\"margin\":\"none\"},{\"type\":\"text\",\"text\":\"你對我們還滿意嗎？\",\"weight\":\"bold\",\"size\":\"xl\",\"align\":\"center\",\"wrap\":true,\"margin\":\"md\"},{\"type\":\"text\",\"text\":\"歡迎您以 0～10 分為此帳號評分。\",\"size\":\"sm\",\"color\":\"#666666\",\"align\":\"center\",\"wrap\":true},{\"type\":\"separator\",\"margin\":\"lg\"},{\"type\":\"text\",\"text\":\"調查期間\",\"weight\":\"bold\",\"size\":\"lg\",\"align\":\"center\",\"margin\":\"lg\"},{\"type\":\"text\",\"text\":\"即日起 - 2026/03/31 23:59\",\"size\":\"sm\",\"color\":\"#666666\",\"align\":\"center\",\"margin\":\"sm\"},{\"type\":\"text\",\"text\":\"點選「給評價」即視為同意將回答結果提供給健平團隊作為服務優化之用。\",\"size\":\"xs\",\"color\":\"#999999\",\"wrap\":true,\"margin\":\"md\"}]},\"footer\":{\"type\":\"box\",\"layout\":\"vertical\",\"spacing\":\"sm\",\"contents\":[{\"type\":\"button\",\"style\":\"primary\",\"height\":\"sm\",\"color\":\"#5B7BDA\",\"action\":{\"type\":\"uri\",\"label\":\"給評價\",\"uri\":\"https://line-smart-bot-sg.onrender.com/survey-track.html?uid={uid}\"}}]}}}",
+    "updatedAt": "2026-03-17T17:52:05.168Z"
+  },
+  {
+    "id": "msg_1773769756186_survey_b",
+    "name": "問卷版本B（正式文案）",
+    "category": "問卷",
+    "type": "text",
+    "text": "保險需求小問卷（約 1 分鐘）\n健平想聽聽你的想法，填完我會依照你的需求提供個人化建議與最新保單整理資訊。\n\n📝 問卷連結：https://line-smart-bot-sg.onrender.com/survey-track.html?uid={uid}",
+    "mediaUrl": "",
+    "updatedAt": "2026-03-17T17:49:16.186Z"
+  },
+  {
+    "id": "msg_1773768455300_survey",
+    "name": "問卷回饋連結",
+    "category": "問卷",
+    "type": "text",
+    "text": "感謝你的回覆，方便幫我填一下快速問卷嗎？\n📝 問卷連結：https://line-smart-bot-sg.onrender.com/survey-track.html?uid={uid}",
+    "mediaUrl": "",
+    "updatedAt": "2026-03-17T17:27:35.300Z"
+  },
+  {
+    "id": "msg_1773383082940f6b7",
+    "updatedAt": "2026-03-13T06:24:42.940Z",
+    "name": "週末放鬆提醒",
+    "category": "關懷",
+    "type": "text",
+    "text": "週末到了，忙碌之餘也別忘了好好休息一下 😊",
+    "mediaUrl": ""
+  },
+  {
+    "id": "msg_177338308293923f6",
+    "updatedAt": "2026-03-13T06:24:42.939Z",
+    "name": "早安暖心問候",
+    "category": "關懷",
+    "type": "text",
+    "text": "早安～今天也祝你順順利利，記得補充水分喔！",
+    "mediaUrl": ""
+  },
+  {
+    "id": "msg_1773382898978",
+    "name": "週末問候",
+    "category": "氣候轉變關心",
+    "type": "image",
+    "text": "「提醒您，冷氣團報到囉！🌡️ 這幾天溫度轉涼，大家出門記得洋蔥式穿法，注意保暖。忙碌之餘也要多照顧身體，別讓感冒找上門喔！健平關心您。」",
+    "mediaUrl": "https://lh3.googleusercontent.com/gg-dl/AOI_d_906zuyU88nIMBnlYImF4QzBTQwNEPbeVARkuEEYjv68sR1LgrTsUvpOgkalxZ_BN0OiRsxbFFOpupg1-wKifjNi2-aYCOk9yi4LTakwTWq4-FdNR4A72S-NUxbN9s8hQkPp2sWyLypaFndYWlg-ckwo_lF_BC-one5650hMFbfYhjMmw=s1600-rj",
+    "updatedAt": "2026-03-13T06:21:38.978Z"
+  }
+]
