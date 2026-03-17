@@ -15,7 +15,12 @@ const config = {
 };
 
 const app = express();
-const client = new line.Client(config);
+const client = (config.channelAccessToken && config.channelSecret)
+  ? new line.Client(config)
+  : null;
+if (!client) {
+  console.warn('[BOOT] LINE client disabled: missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET');
+}
 const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-b2bfa6561bf8e564570f7c99becf2540';
 const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-a02a99359e74ad97a7a8336335e7a916';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
@@ -103,15 +108,20 @@ app.get('/debug/user-ids', (req, res) => {
   }
 });
 
-app.post('/webhook', line.middleware(config), async (req, res) => {
-  try {
-    await Promise.all(req.body.events.map(handleEvent));
-    res.sendStatus(200);
-  } catch (err) {
-    console.error('處理事件時出錯：', err);
-    res.sendStatus(500);
-  }
-});
+if (config.channelSecret) {
+  app.post('/webhook', line.middleware(config), async (req, res) => {
+    if (!client) return res.status(503).send('LINE client not configured');
+    try {
+      await Promise.all(req.body.events.map(handleEvent));
+      res.sendStatus(200);
+    } catch (err) {
+      console.error('處理事件時出錯：', err);
+      res.sendStatus(500);
+    }
+  });
+} else {
+  app.post('/webhook', (req, res) => res.status(503).send('LINE webhook not configured'));
+}
 
 async function handleEvent(event) {
   logUserSource(event);
