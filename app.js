@@ -7,6 +7,7 @@ const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const memoryStore = require('./memoryStore');
 const { getLatestFundEntries } = require('./fundFetcher');
+const { ensureFile: ensureAbEventStore, markLatestUnrepliedAsReplied } = require('./ab_event_store');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -30,6 +31,7 @@ const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
 const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 const GLOBAL_MANUAL_FILE = path.resolve(__dirname, 'status', 'global_manual.json');
 const DEBUG_USER_LOG_TOKEN = process.env.DEBUG_USER_LOG_TOKEN || '';
+const AB_REPLY_WINDOW_HOURS = Math.max(1, Number(process.env.AB_REPLY_WINDOW_HOURS || 72));
 let knowledgeCache = { entries: [], mtimeMs: 0 };
 
 const BRAVE_CREDENTIALS_PATH = path.resolve(__dirname, 'config', 'brave_credentials.json');
@@ -46,7 +48,7 @@ if (!BRAVE_API_KEY && fs.existsSync(BRAVE_CREDENTIALS_PATH)) {
 }
 
 memoryStore.initMemoryStore();
-
+ensureAbEventStore();
 
 app.get('/', (req, res) => {
   res.send('LINE Smart Bot is running');
@@ -126,6 +128,11 @@ async function handleEvent(event) {
 
   const userText = (event.message.text || '').trim();
   upsertContactFromEvent(event);
+  try {
+    markLatestUnrepliedAsReplied(event?.source?.userId, AB_REPLY_WINDOW_HOURS);
+  } catch (error) {
+    console.error('AB reply mark failed:', error);
+  }
 
   // 手動聊天模式切換（每位用戶獨立）
   if (userText === '使用手動聊天') {
@@ -1373,6 +1380,60 @@ function buildReply(rawText) {
 }
 
 const PORT = process.env.PORT || 3000;
+const CONTACTS_FILE = path.join(__dirname, 'contacts.json');
+const SURVEY_RESPONSES_FILE = path.join(__dirname, 'survey_responses.json');
+const SURVEY_PAGE_FILE = path.join(__dirname, 'dashboard', 'public', 'survey-track.html');
+
+app.get('/survey-track.html', (req, res) => {
+  if (fs.existsSync(SURVEY_PAGE_FILE)) return res.sendFile(SURVEY_PAGE_FILE);
+  return res.type('html').send(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>保險需求小問卷</title><style>body{font-family:'Noto Sans TC',sans-serif;background:#f3f4f6;margin:0;padding:16px}.box{max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 8px 24px rgba(15,23,42,.08)}h1{font-size:1.35rem;margin-bottom:8px}.desc{color:#4b5563;line-height:1.6}.opt{margin:6px 0}label{display:block;margin:16px 0 8px;font-weight:600}button{width:100%;margin-top:24px;padding:14px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700}.consent{font-size:.85rem;color:#6b7280;margin-top:16px;line-height:1.4}#msg{margin-top:12px;color:#2563eb;font-weight:600}</style></head><body><div class="box"><h1>保險需求小問卷（約 1 分鐘）</h1><p class="desc">健平想聽聽你的想法，這份問卷只要 1 分鐘。回覆後我會依照你的需求，提供個人化的建議與最新保單整理資訊。</p><form id="f"><label>1. 你是否已經和健平購買過保險？</label><div class="opt"><input type="radio" name="q1" value="yes" required> 是</div><div class="opt"><input type="radio" name="q1" value="no"> 否</div><label>2. 你對自己的保險了解程度如何？</label><div class="opt"><input type="radio" name="q2" value="clear" required> 很清楚（完全掌握）</div><div class="opt"><input type="radio" name="q2" value="mid"> 一般（概略知道）</div><div class="opt"><input type="radio" name="q2" value="unclear"> 不太清楚（需要協助）</div><label>3. 你是否希望健平協助更新 / 整理你的保單資訊？</label><div class="opt"><input type="radio" name="q3" value="yes_now" required> 非常願意，我需要協助</div><div class="opt"><input type="radio" name="q3" value="maybe"> 可以看看情況</div><div class="opt"><input type="radio" name="q3" value="no_need"> 我自己很了解，暫時不用</div><button type="submit">送出問卷</button><div class="consent">我了解並同意：這份問卷僅用於提供保險建議與服務優化。若不希望後續收到健平的連繫，可隨時回覆「停止」或通知客服。</div><div id="msg"></div></form></div><script>const uid=new URLSearchParams(location.search).get('uid')||'';document.getElementById('f').addEventListener('submit',async(e)=>{e.preventDefault();if(!uid){document.getElementById('msg').textContent='缺少 uid，請從原始訊息連結開啟。';return;}const fd=new FormData(e.target);const payload={userId:uid,uid,surveyId:'survey_reengage_v2',answers:{q1:fd.get('q1'),q2:fd.get('q2'),q3:fd.get('q3')}};const r=await fetch('/api/survey-track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const j=await r.json();document.getElementById('msg').textContent=(r.ok&&j.ok)?'感謝你的回覆！我會依照答案整理建議，稍後與你聯繫。':'送出失敗，請稍後再試。';if(r.ok&&j.ok)e.target.reset();});</script></body></html>`);
+});
+
+app.post('/api/survey-track', express.json(), (req, res) => {
+  try {
+    const userId = String(req.body?.userId || req.body?.uid || '').trim();
+    if (!userId) return res.status(400).json({ ok: false, error: 'userId required' });
+
+    const payload = {
+      userId,
+      score: Number(req.body?.score ?? NaN),
+      note: String(req.body?.note || '').trim(),
+      answers: req.body?.answers || req.body?.data || null,
+      submittedAt: new Date().toISOString()
+    };
+
+    const responses = fs.existsSync(SURVEY_RESPONSES_FILE)
+      ? JSON.parse(fs.readFileSync(SURVEY_RESPONSES_FILE, 'utf8') || '[]')
+      : [];
+    responses.push(payload);
+    fs.writeFileSync(SURVEY_RESPONSES_FILE, JSON.stringify(responses, null, 2), 'utf8');
+
+    const contacts = fs.existsSync(CONTACTS_FILE)
+      ? JSON.parse(fs.readFileSync(CONTACTS_FILE, 'utf8') || '[]')
+      : [];
+    const idx = contacts.findIndex(c => c.userId === userId);
+    if (idx >= 0) {
+      contacts[idx].last_contact_at = payload.submittedAt;
+      contacts[idx].survey_last_at = payload.submittedAt;
+      if (payload.note) contacts[idx].survey_last_note = payload.note.slice(0, 200);
+    } else {
+      contacts.push({
+        userId,
+        name: '新客戶',
+        enabled: true,
+        last_contact_at: payload.submittedAt,
+        survey_last_at: payload.submittedAt,
+        survey_last_note: payload.note.slice(0, 200)
+      });
+    }
+    fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8');
+
+    return res.json({ ok: true, userId, submittedAt: payload.submittedAt });
+  } catch (err) {
+    console.error('survey-track error:', err);
+    return res.status(500).json({ ok: false, error: 'internal_error' });
+  }
+});
 
 app.get('/admin/contacts/export', (req, res) => {
   try {
