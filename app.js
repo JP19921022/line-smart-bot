@@ -3,7 +3,7 @@ const path = require('path');
 require('dotenv').config();
 const express = require('express');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 const line = require('@line/bot-sdk');
 const memoryStore = require('./memoryStore');
 const { getLatestFundEntries } = require('./fundFetcher');
@@ -25,13 +25,10 @@ const MAIN_RICH_MENU_ID = process.env.RICH_MENU_MAIN_ID || 'richmenu-b2bfa6561bf
 const MORE_RICH_MENU_ID = process.env.RICH_MENU_MORE_ID || 'richmenu-a02a99359e74ad97a7a8336335e7a916';
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
-const openaiClient = process.env.OPENAI_API_KEY
-  ? new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      baseURL: process.env.OPENAI_BASE_URL || undefined
-    })
+const anthropicClient = process.env.ANTHROPIC_API_KEY
+  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5-nano';
+const CLAUDE_MODEL = 'claude-sonnet-4-6';
 const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
 const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 const GLOBAL_MANUAL_FILE = path.resolve(__dirname, 'status', 'global_manual.json');
@@ -225,18 +222,20 @@ async function switchRichMenuForUser(source, richMenuId) {
 async function getAssistantReply(event, rawText) {
   const prompt = buildPrompt(rawText, event);
 
-  if (openaiClient) {
+  if (anthropicClient) {
     try {
-      const response = await openaiClient.responses.create({
-        model: OPENAI_MODEL,
-        input: prompt,
+      const response = await anthropicClient.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 8096,
+        system: personaInstruction,
+        messages: [{ role: 'user', content: prompt }],
       });
-      const textResponse = response?.output_text?.trim();
+      const textResponse = response?.content?.[0]?.text?.trim();
       if (textResponse) {
         return textResponse;
       }
     } catch (error) {
-      console.error('OpenAI 回應失敗：', error);
+      console.error('Anthropic 回應失敗：', error);
     }
   }
 
