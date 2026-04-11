@@ -6,6 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const Anthropic = require('@anthropic-ai/sdk');
 const line = require('@line/bot-sdk');
 const memoryStore = require('./memoryStore');
+const proactivePush = require('./proactivePush');
 const { getLatestFundEntries } = require('./fundFetcher');
 const { ensureFile: ensureAbEventStore, markLatestUnrepliedAsReplied } = require('./ab_event_store');
 
@@ -242,6 +243,8 @@ async function getAssistantReply(event, rawText) {
       if (textResponse) {
         await memoryStore.saveSessionMessage(userId, 'user', prompt);
         await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
+        // 非同步偵測是否需要儲存主動推送觸發事件
+        proactivePush.detectAndStoreTrigger(userId, rawText, textResponse).catch(console.error);
         return textResponse;
       }
     } catch (error) {
@@ -260,6 +263,8 @@ async function getAssistantReply(event, rawText) {
       if (textResponse) {
         await memoryStore.saveSessionMessage(userId, 'user', prompt);
         await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
+        // 非同步偵測是否需要儲存主動推送觸發事件
+        proactivePush.detectAndStoreTrigger(userId, rawText, textResponse).catch(console.error);
         return textResponse;
       }
     } catch (error) {
@@ -1512,6 +1517,30 @@ app.post('/admin/global-manual', express.json(), (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`伺服器運行在 http://localhost:${PORT}`);
+
+  // ── 主動推送排程器 ─────────────────────────────────────
+  // 每60分鐘掃描一次待發主動訊息
+  const PUSH_INTERVAL_MS = 60 * 60 * 1000;
+  setInterval(async () => {
+    try {
+      await proactivePush.sendPendingMessages(client, anthropicClient, personaInstruction);
+    } catch (err) {
+      console.error('主動推送排程錯誤：', err.message);
+    }
+  }, PUSH_INTERVAL_MS);
+
+  // 每24小時檢查節慶觸發（台灣時間早上9點附近執行）
+  const SEASONAL_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  setInterval(async () => {
+    try {
+      const allUsers = await proactivePush.getAllActiveUserIds();
+      await proactivePush.checkSeasonalTriggers(allUsers);
+    } catch (err) {
+      console.error('節慶觸發檢查錯誤：', err.message);
+    }
+  }, SEASONAL_INTERVAL_MS);
+
+  console.log('✅ 主動推送排程器已啟動（每60分鐘掃描）');
 });
 
 
