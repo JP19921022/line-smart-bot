@@ -52,6 +52,36 @@ if (!BRAVE_API_KEY && fs.existsSync(BRAVE_CREDENTIALS_PATH)) {
 memoryStore.initMemoryStore();
 ensureAbEventStore();
 
+// ── 對話上下文（Session History）──────────────────────────────
+// 每位用戶保留最近 10 輪（20 則）對話，30 分鐘無互動自動清除
+const SESSION_MAX_TURNS = 10;
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 分鐘
+const sessionHistory = new Map(); // userId -> { messages: [], timer: TimerId }
+
+function getSessionMessages(userId) {
+  return sessionHistory.get(userId)?.messages || [];
+}
+
+function appendSessionMessage(userId, role, content) {
+  if (!userId) return;
+  let session = sessionHistory.get(userId);
+  if (!session) {
+    session = { messages: [], timer: null };
+    sessionHistory.set(userId, session);
+  }
+  // 重置 30 分鐘清除計時器
+  if (session.timer) clearTimeout(session.timer);
+  session.timer = setTimeout(() => sessionHistory.delete(userId), SESSION_TIMEOUT_MS);
+
+  session.messages.push({ role, content });
+  // 只保留最近 N 輪（1 輪 = user + assistant 各 1 則）
+  const maxMessages = SESSION_MAX_TURNS * 2;
+  if (session.messages.length > maxMessages) {
+    session.messages = session.messages.slice(session.messages.length - maxMessages);
+  }
+}
+// ─────────────────────────────────────────────────────────────
+
 app.get('/', (req, res) => {
   res.send('LINE Smart Bot is running');
 });
@@ -221,18 +251,26 @@ async function switchRichMenuForUser(source, richMenuId) {
 
 async function getAssistantReply(event, rawText) {
   const displayName = await fetchDisplayName(event?.source);
+  const userId = event?.source?.type === 'user' ? event.source.userId : null;
   const prompt = buildPrompt(rawText, event, displayName);
 
   if (anthropicClient) {
     try {
+      // 取得該用戶的歷史對話，並在最後加上這次的輸入
+      const history = getSessionMessages(userId);
+      const messages = [...history, { role: 'user', content: prompt }];
+
       const response = await anthropicClient.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 8096,
         system: personaInstruction,
-        messages: [{ role: 'user', content: prompt }],
+        messages,
       });
       const textResponse = response?.content?.[0]?.text?.trim();
       if (textResponse) {
+        // 把這輪對話存入歷史
+        appendSessionMessage(userId, 'user', prompt);
+        appendSessionMessage(userId, 'assistant', textResponse);
         return textResponse;
       }
     } catch (error) {
@@ -251,6 +289,9 @@ async function getAssistantReply(event, rawText) {
       const textResponse = result?.response?.text()?.trim();
 
       if (textResponse) {
+        // Gemini fallback 也記錄歷史
+        appendSessionMessage(userId, 'user', prompt);
+        appendSessionMessage(userId, 'assistant', textResponse);
         return textResponse;
       }
     } catch (error) {
