@@ -53,10 +53,9 @@ memoryStore.initMemoryStore();
 ensureAbEventStore();
 
 // ── 對話上下文（Session History）──────────────────────────────
-// 每位用戶保留最近 10 輪（20 則）對話，30 分鐘無互動自動清除
-const SESSION_MAX_TURNS = 10;
-const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 分鐘
-const sessionHistory = new Map(); // userId -> { messages: [], timer: TimerId }
+// 每位用戶永久保留最近 50 輪（100 則）對話，重啟前不清除
+const SESSION_MAX_TURNS = 50;
+const sessionHistory = new Map(); // userId -> { messages: [] }
 
 function getSessionMessages(userId) {
   return sessionHistory.get(userId)?.messages || [];
@@ -66,12 +65,9 @@ function appendSessionMessage(userId, role, content) {
   if (!userId) return;
   let session = sessionHistory.get(userId);
   if (!session) {
-    session = { messages: [], timer: null };
+    session = { messages: [] };
     sessionHistory.set(userId, session);
   }
-  // 重置 30 分鐘清除計時器
-  if (session.timer) clearTimeout(session.timer);
-  session.timer = setTimeout(() => sessionHistory.delete(userId), SESSION_TIMEOUT_MS);
 
   session.messages.push({ role, content });
   // 只保留最近 N 輪（1 輪 = user + assistant 各 1 則）
