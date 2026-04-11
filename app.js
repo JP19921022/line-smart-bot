@@ -220,7 +220,8 @@ async function switchRichMenuForUser(source, richMenuId) {
 }
 
 async function getAssistantReply(event, rawText) {
-  const prompt = buildPrompt(rawText, event);
+  const displayName = await fetchDisplayName(event?.source);
+  const prompt = buildPrompt(rawText, event, displayName);
 
   if (anthropicClient) {
     try {
@@ -1310,7 +1311,7 @@ const fewShotExamples = `客戶：我最近壓力很大，基金都在跌。
 客戶：今天台股行情怎樣？
 小平：我幫你搜一下最新時事，等一下快速整理三則焦點給你。`;
 
-function buildPrompt(userText, event) {
+function buildPrompt(userText, event, displayName) {
   const topicHint = buildTopicHint(userText);
   const sourceInfo = event?.source?.type === 'user' ? '個人客戶' : '群組';
   const userId = event?.source?.type === 'user' ? event.source.userId : '';
@@ -1319,10 +1320,11 @@ function buildPrompt(userText, event) {
 ${previousMemories.join('\n')}
 ---
 ` : '';
+  const nameHint = displayName ? `使用者 LINE 名稱：${displayName}（稱呼對方時請直接叫「${displayName}」，不要用「大哥/大姐/老闆」等泛稱）\n` : '';
 
   return `${fewShotExamples}
 ---
-${memoryContext}使用者類型：${sourceInfo}
+${memoryContext}${nameHint}使用者類型：${sourceInfo}
 可能主題：${topicHint}
 使用者輸入：${userText || '（無內容）'}
 請以上述 personaInstruction 的口吻回覆，必要時先共感再給建議。`;
