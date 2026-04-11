@@ -52,31 +52,7 @@ if (!BRAVE_API_KEY && fs.existsSync(BRAVE_CREDENTIALS_PATH)) {
 memoryStore.initMemoryStore();
 ensureAbEventStore();
 
-// ── 對話上下文（Session History）──────────────────────────────
-// 每位用戶永久保留最近 50 輪（100 則）對話，重啟前不清除
-const SESSION_MAX_TURNS = 50;
-const sessionHistory = new Map(); // userId -> { messages: [] }
-
-function getSessionMessages(userId) {
-  return sessionHistory.get(userId)?.messages || [];
-}
-
-function appendSessionMessage(userId, role, content) {
-  if (!userId) return;
-  let session = sessionHistory.get(userId);
-  if (!session) {
-    session = { messages: [] };
-    sessionHistory.set(userId, session);
-  }
-
-  session.messages.push({ role, content });
-  // 只保留最近 N 輪（1 輪 = user + assistant 各 1 則）
-  const maxMessages = SESSION_MAX_TURNS * 2;
-  if (session.messages.length > maxMessages) {
-    session.messages = session.messages.slice(session.messages.length - maxMessages);
-  }
-}
-// ─────────────────────────────────────────────────────────────
+// ── 對話上下文由 memoryStore（Supabase）統一管理 ─────────────
 
 app.get('/', (req, res) => {
   res.send('LINE Smart Bot is running');
@@ -248,14 +224,14 @@ async function switchRichMenuForUser(source, richMenuId) {
 async function getAssistantReply(event, rawText) {
   const displayName = await fetchDisplayName(event?.source);
   const userId = event?.source?.type === 'user' ? event.source.userId : null;
-  const prompt = buildPrompt(rawText, event, displayName);
+  const prompt = await buildPrompt(rawText, event, displayName);
+
+  // 從 Supabase 載入該用戶的對話歷史（本地快取優先）
+  const history = await memoryStore.loadSessionHistory(userId);
+  const messages = [...history, { role: 'user', content: prompt }];
 
   if (anthropicClient) {
     try {
-      // 取得該用戶的歷史對話，並在最後加上這次的輸入
-      const history = getSessionMessages(userId);
-      const messages = [...history, { role: 'user', content: prompt }];
-
       const response = await anthropicClient.messages.create({
         model: CLAUDE_MODEL,
         max_tokens: 8096,
@@ -264,9 +240,8 @@ async function getAssistantReply(event, rawText) {
       });
       const textResponse = response?.content?.[0]?.text?.trim();
       if (textResponse) {
-        // 把這輪對話存入歷史
-        appendSessionMessage(userId, 'user', prompt);
-        appendSessionMessage(userId, 'assistant', textResponse);
+        await memoryStore.saveSessionMessage(userId, 'user', prompt);
+        await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
         return textResponse;
       }
     } catch (error) {
@@ -280,14 +255,11 @@ async function getAssistantReply(event, rawText) {
         model: GEMINI_MODEL,
         systemInstruction: personaInstruction,
       });
-
       const result = await model.generateContent(prompt);
       const textResponse = result?.response?.text()?.trim();
-
       if (textResponse) {
-        // Gemini fallback 也記錄歷史
-        appendSessionMessage(userId, 'user', prompt);
-        appendSessionMessage(userId, 'assistant', textResponse);
+        await memoryStore.saveSessionMessage(userId, 'user', prompt);
+        await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
         return textResponse;
       }
     } catch (error) {
@@ -1348,11 +1320,11 @@ const fewShotExamples = `客戶：我最近壓力很大，基金都在跌。
 客戶：今天台股行情怎樣？
 小平：我幫你搜一下最新時事，等一下快速整理三則焦點給你。`;
 
-function buildPrompt(userText, event, displayName) {
+async function buildPrompt(userText, event, displayName) {
   const topicHint = buildTopicHint(userText);
   const sourceInfo = event?.source?.type === 'user' ? '個人客戶' : '群組';
   const userId = event?.source?.type === 'user' ? event.source.userId : '';
-  const previousMemories = userId ? memoryStore.getRecentMemories(userId, topicHint, 3) : [];
+  const previousMemories = userId ? await memoryStore.getRecentMemories(userId, topicHint, 3) : [];
   const memoryContext = previousMemories.length ? `使用者之前提過：
 ${previousMemories.join('\n')}
 ---
@@ -1377,7 +1349,7 @@ function buildTopicHint(text) {
 
 const MEMORY_KEYWORDS = ['保單', '基金', '投資', '主管', '提醒', '紀錄', '記得', '家人', '醫院', '生日', '缺口', '保費', '加碼', '贖回', '壓力'];
 
-function maybeStoreMemory(event, text) {
+async function maybeStoreMemory(event, text) {
   if (!text || !event?.source || event.source.type !== 'user') {
     return;
   }
@@ -1387,7 +1359,7 @@ function maybeStoreMemory(event, text) {
   }
   const topic = buildTopicHint(normalized);
   const summary = summarizeMemory(normalized);
-  memoryStore.saveMemory({ userId: event.source.userId, topic, summary });
+  await memoryStore.saveMemory({ userId: event.source.userId, topic, summary });
 }
 
 function shouldStoreMemory(text) {
