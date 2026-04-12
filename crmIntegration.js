@@ -67,7 +67,7 @@ ${conversationText}`;
   }
 
   // 比對 CRM 客戶（取得 lead 物件 + client_id）
-  const { clientId, lead } = await _matchCrmClient(displayName);
+  const { clientId, lead } = await _matchCrmClient(userId, displayName);
   const finalClientId = clientId || `line_${userId}`;
 
   // ① 寫入 Supabase interaction_logs
@@ -96,10 +96,11 @@ ${conversationText}`;
 }
 
 // ──────────────────────────────────────────────
-// 透過 CRM API 比對客戶：LINE 顯示名稱 → { clientId, lead }
+// 透過 CRM API 比對客戶：LINE userId / 顯示名稱 → { clientId, lead }
+// 優先用 lineId === userId（精確），次用姓名模糊比對
 // ──────────────────────────────────────────────
-async function _matchCrmClient(displayName) {
-  if (!CRM_TOKEN || !displayName) return { clientId: null, lead: null };
+async function _matchCrmClient(userId, displayName) {
+  if (!CRM_TOKEN) return { clientId: null, lead: null };
   try {
     const res = await fetch(`${CRM_BASE_URL}/api/crm/data`, {
       headers: { 'x-admin-token': CRM_TOKEN },
@@ -108,9 +109,24 @@ async function _matchCrmClient(displayName) {
     if (!res.ok) return { clientId: null, lead: null };
     const data = await res.json();
     const leads = data.leads || [];
-    const match = leads.find(l =>
-      l.lineId && l.lineId.trim() === displayName.trim() && l.lineBound === 'yes'
-    );
+
+    // ① 優先：lineId 欄位 === LINE userId（最準確）
+    let match = leads.find(l => l.lineId && l.lineId.trim() === (userId || '').trim());
+
+    // ② 備用：姓名模糊比對（displayName 包含 CRM 姓名，或 CRM 姓名包含 displayName）
+    if (!match && displayName) {
+      const dn = displayName.trim().toLowerCase();
+      match = leads.find(l => {
+        const n = (l.name || '').trim().toLowerCase();
+        return n && (dn.includes(n) || n.includes(dn));
+      });
+    }
+
+    if (match) {
+      console.log(`✅ CRM 客戶比對成功：${match.name} (id: ${match.id})`);
+    } else {
+      console.log(`⚠️ CRM 找不到對應客戶，userId=${userId} displayName=${displayName}`);
+    }
     return match ? { clientId: match.id, lead: match } : { clientId: null, lead: null };
   } catch (err) {
     console.error('CRM API 比對失敗：', err.message);
