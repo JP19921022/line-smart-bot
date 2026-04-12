@@ -1,5 +1,6 @@
 'use strict';
 const supabase = require('./supabaseClient');
+const { buildFlexByTriggerType } = require('./flexBuilder');
 
 // ──────────────────────────────────────────────
 // 觸發類型對應的延遲天數與訊息生成提示
@@ -101,7 +102,8 @@ async function sendPendingMessages(lineClient, anthropicClient, personaInstructi
   for (const trigger of triggers) {
     try {
       const message = await _generateMessage(trigger, anthropicClient, personaInstruction);
-      await lineClient.pushMessage({ to: trigger.user_id, messages: [{ type: 'text', text: message }] });
+      const flexMsg = buildFlexByTriggerType(trigger.trigger_type, message);
+      await lineClient.pushMessage({ to: trigger.user_id, messages: [flexMsg] });
       await supabase.from('proactive_triggers').update({ sent: true }).eq('id', trigger.id);
       console.log(`✅ 主動訊息已送出 → ${trigger.user_id} [${trigger.trigger_type}]`);
     } catch (err) {
