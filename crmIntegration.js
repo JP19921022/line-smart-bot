@@ -66,11 +66,11 @@ ${conversationText}`;
     return;
   }
 
-  // 比對 CRM 客戶 ID
-  const clientId = await _matchCrmClient(displayName);
+  // 比對 CRM 客戶（取得 lead 物件 + client_id）
+  const { clientId, lead } = await _matchCrmClient(displayName);
   const finalClientId = clientId || `line_${userId}`;
 
-  // 寫入 Supabase interaction_logs
+  // ① 寫入 Supabase interaction_logs
   if (supabase) {
     const { error } = await supabase.from('interaction_logs').insert({
       client_id:    finalClientId,
@@ -82,31 +82,87 @@ ${conversationText}`;
     if (error) {
       console.error('interaction_logs 寫入失敗：', error.message);
     } else {
-      console.log(`✅ LINE 摘要已儲存 → ${displayName || userId}（CRM ID: ${finalClientId}）`);
+      console.log(`✅ Supabase 摘要已儲存 → ${displayName || userId}`);
     }
+  }
+
+  // ② 同步更新 CRM 客戶備忘欄（Route B）
+  if (lead) {
+    await _pushSummaryToCrm(lead, summary);
   }
 }
 
 // ──────────────────────────────────────────────
-// 透過 CRM API 比對客戶：LINE 顯示名稱 → client_id
+// 透過 CRM API 比對客戶：LINE 顯示名稱 → { clientId, lead }
 // ──────────────────────────────────────────────
 async function _matchCrmClient(displayName) {
-  if (!CRM_TOKEN || !displayName) return null;
+  if (!CRM_TOKEN || !displayName) return { clientId: null, lead: null };
   try {
     const res = await fetch(`${CRM_BASE_URL}/api/crm/data`, {
       headers: { 'x-admin-token': CRM_TOKEN },
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { clientId: null, lead: null };
     const data = await res.json();
     const leads = data.leads || [];
     const match = leads.find(l =>
       l.lineId && l.lineId.trim() === displayName.trim() && l.lineBound === 'yes'
     );
-    return match ? match.id : null;
+    return match ? { clientId: match.id, lead: match } : { clientId: null, lead: null };
   } catch (err) {
     console.error('CRM API 比對失敗：', err.message);
-    return null;
+    return { clientId: null, lead: null };
+  }
+}
+
+// ──────────────────────────────────────────────
+// 把 LINE 摘要追加寫入 CRM 客戶備忘欄（note）
+// 並透過 CRM API 全量更新 leads
+// ──────────────────────────────────────────────
+async function _pushSummaryToCrm(matchedLead, summary) {
+  if (!CRM_TOKEN) return;
+  try {
+    // 先取得所有 leads（避免覆蓋其他客戶資料）
+    const getRes = await fetch(`${CRM_BASE_URL}/api/crm/data`, {
+      headers: { 'x-admin-token': CRM_TOKEN },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!getRes.ok) return;
+    const data = await getRes.json();
+    const leads = data.leads || [];
+
+    // 時間戳記 + 摘要，追加到備忘欄前端
+    const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+    const noteEntry = `【LINE摘要 ${now}】\n${summary}\n${'─'.repeat(20)}\n`;
+
+    // 更新對應客戶的 note 欄位
+    const updatedLeads = leads.map(l => {
+      if (l.id !== matchedLead.id) return l;
+      return {
+        ...l,
+        note: noteEntry + (l.note || ''),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    // 全量寫回 CRM
+    const postRes = await fetch(`${CRM_BASE_URL}/api/crm/data`, {
+      method: 'POST',
+      headers: {
+        'x-admin-token': CRM_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ leads: updatedLeads }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (postRes.ok) {
+      console.log(`✅ CRM 備忘欄已更新 → ${matchedLead.name || matchedLead.lineId}`);
+    } else {
+      console.error('CRM API 寫入失敗：', postRes.status);
+    }
+  } catch (err) {
+    console.error('CRM 備忘欄更新失敗：', err.message);
   }
 }
 
