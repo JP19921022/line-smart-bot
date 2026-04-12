@@ -5,7 +5,7 @@ const CRM_BASE_URL = 'https://dashboard.jp-sync.xyz';
 const CRM_TOKEN    = process.env.CRM_ADMIN_TOKEN;
 
 // 每累積幾則新訊息就生成一次摘要
-const SUMMARY_THRESHOLD = 10;
+const SUMMARY_THRESHOLD = 3;
 
 // 本地計數器 { userId: count }（重啟歸零，但不影響功能）
 const msgCounter = new Map();
