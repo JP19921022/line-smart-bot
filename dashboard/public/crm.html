@@ -1161,12 +1161,19 @@ async function syncLineContacts(){
       let bestIdx=-1,best=0;
       leads.forEach((x,i)=>{const s=score(x,c); if(s>best){best=s; bestIdx=i;}});
       const data={id:c.userId,name:c.name||'未命名',phone:'',lineId:c.userId,lineBound:'yes',stage:'名單',birthday:'',expiryAt:'',nextFollowAt:'',policy:'',note:'',updatedAt:new Date().toISOString()};
-      if(bestIdx>=0 && best>=70){
+      // ① 若已有相同 lineId 的紀錄，直接綁定（不管名稱分數），防止重複新增
+      const sameLineIdx = leads.findIndex(x => x.lineId && x.lineId === c.userId);
+      if(sameLineIdx >= 0){
+        leads[sameLineIdx]={...leads[sameLineIdx],lineId:data.lineId,lineBound:'yes',updatedAt:data.updatedAt};
+        upd++;
+      } else if(bestIdx>=0 && best>=70){
+        // ② 名稱高度相似，合併
         const oldName = leads[bestIdx].name || '';
         const betterName = (!oldName || oldName==='未命名' || oldName==='新客戶') ? data.name : oldName;
         leads[bestIdx]={...leads[bestIdx],name:betterName,lineId:data.lineId,lineBound:'yes',updatedAt:data.updatedAt};
         upd++;
       } else {
+        // ③ 真的沒有，才新增
         leads.push(data); add++;
       }
     }
