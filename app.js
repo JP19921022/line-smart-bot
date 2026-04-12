@@ -7,6 +7,7 @@ const Anthropic = require('@anthropic-ai/sdk');
 const line = require('@line/bot-sdk');
 const memoryStore = require('./memoryStore');
 const proactivePush = require('./proactivePush');
+const crmIntegration = require('./crmIntegration');
 const { getLatestFundEntries } = require('./fundFetcher');
 const { ensureFile: ensureAbEventStore, markLatestUnrepliedAsReplied } = require('./ab_event_store');
 
@@ -243,8 +244,9 @@ async function getAssistantReply(event, rawText) {
       if (textResponse) {
         await memoryStore.saveSessionMessage(userId, 'user', prompt);
         await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
-        // 非同步偵測是否需要儲存主動推送觸發事件
+        // 非同步：主動推送偵測 + CRM 摘要追蹤
         proactivePush.detectAndStoreTrigger(userId, rawText, textResponse).catch(console.error);
+        crmIntegration.trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore).catch(console.error);
         return textResponse;
       }
     } catch (error) {
@@ -263,8 +265,9 @@ async function getAssistantReply(event, rawText) {
       if (textResponse) {
         await memoryStore.saveSessionMessage(userId, 'user', prompt);
         await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
-        // 非同步偵測是否需要儲存主動推送觸發事件
+        // 非同步：主動推送偵測 + CRM 摘要追蹤
         proactivePush.detectAndStoreTrigger(userId, rawText, textResponse).catch(console.error);
+        crmIntegration.trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore).catch(console.error);
         return textResponse;
       }
     } catch (error) {
