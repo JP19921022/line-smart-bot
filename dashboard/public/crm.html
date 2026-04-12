@@ -693,26 +693,15 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
 
       <!-- ── 互動記錄 ── -->
       <div class="panel act-panel" id="actLogPanel" style="display:none">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div class="act-panel-title">📝 互動記錄</div>
-          <span id="actCustomerName" style="font-size:12px;color:var(--cyan);font-weight:700"></span>
-        </div>
-        <!-- 新增互動 -->
-        <div style="background:var(--card3);border-radius:10px;padding:10px 12px;margin-bottom:12px">
-          <div style="font-size:11px;font-weight:700;color:var(--sub2);margin-bottom:8px;letter-spacing:.06em">記錄這次互動</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="actTypeBtns">
-            <button type="button" class="act-type-btn sel" data-type="📞 電話" onclick="selectActType(this)">📞 電話</button>
-            <button type="button" class="act-type-btn" data-type="💬 LINE" onclick="selectActType(this)">💬 LINE</button>
-            <button type="button" class="act-type-btn" data-type="👥 見面" onclick="selectActType(this)">👥 見面</button>
-            <button type="button" class="act-type-btn" data-type="📋 提案" onclick="selectActType(this)">📋 提案</button>
-            <button type="button" class="act-type-btn" data-type="✅ 成交" onclick="selectActType(this)">✅ 成交</button>
-            <button type="button" class="act-type-btn" data-type="📝 備忘" onclick="selectActType(this)">📝 備忘</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div class="act-panel-title">💬 對話紀錄</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span id="actCustomerName" style="font-size:12px;color:var(--cyan);font-weight:700"></span>
+            <button type="button" onclick="syncActivitiesFromServer(true)" style="background:none;border:1px solid var(--sub2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--sub2);cursor:pointer">↻ 同步</button>
           </div>
-          <textarea id="actNote" placeholder="記錄內容（例：討論壽險方案，客戶有興趣，下週再跟進）" style="margin-bottom:8px;min-height:64px"></textarea>
-          <button type="button" class="btn" style="width:100%" onclick="addActivity()">＋ 新增記錄</button>
         </div>
         <!-- 時間軸 -->
-        <div class="act-timeline" id="actTimeline"><div class="act-empty">尚無互動記錄</div></div>
+        <div class="act-timeline" id="actTimeline"><div class="act-empty">尚無對話紀錄<br/><span style="font-size:11px;color:var(--sub2)">與 Bot 對話 3 則後自動匯入</span></div></div>
       </div>
 
     </div>
@@ -1272,7 +1261,7 @@ function saveActivities(cid,arr){
 }
 
 // 開啟 App 時從伺服器拉取，合併進 localStorage（Bot 寫入的記錄會自動出現）
-async function syncActivitiesFromServer(){
+async function syncActivitiesFromServer(forceRender=false){
   const tok=localStorage.getItem('junfeng_crm_admin_token')||localStorage.getItem('dashboard_admin_token')||'';
   if(!tok) return;
   try{
@@ -1284,20 +1273,18 @@ async function syncActivitiesFromServer(){
       if(!Array.isArray(serverArr)||!serverArr.length) continue;
       const localArr=Array.isArray(local[cid])?local[cid]:[];
       const localIds=new Set(localArr.map(a=>a.id));
-      // 把伺服器有但本地沒有的記錄加進來（Bot 新增的）
       const newOnes=serverArr.filter(a=>!localIds.has(a.id));
       if(newOnes.length){
-        // note/content 欄位統一：Bot 用 content，手動用 note，渲染時兩者皆支援
         local[cid]=[...newOnes,...localArr].slice(0,200);
         merged=true;
       }
     }
-    if(merged){
+    if(merged||forceRender){
       localStorage.setItem(ACT_KEY,JSON.stringify(local));
-      // 若目前有客戶面板開著就刷新顯示
       if(_actCustomerId) renderActTimeline(_actCustomerId);
+      if(forceRender) crmToast('✅ 對話紀錄已同步','ok');
     }
-  }catch(e){ /* 網路失敗靜默，不影響本地使用 */ }
+  }catch(e){ if(forceRender) crmToast('⚠️ 同步失敗，請確認網路','err'); }
 }
 function selectActType(btn){
   _actSelectedType=btn.dataset.type;
@@ -1314,21 +1301,20 @@ function openActPanel(cid,name){
 }
 function renderActTimeline(cid){
   const box=document.getElementById('actTimeline'); if(!box) return;
-  const acts=getActivities(cid).slice().reverse();
-  if(!acts.length){box.innerHTML='<div class="act-empty">尚無互動記錄<br/><span style="font-size:11px">按上方按鈕新增第一筆</span></div>';return;}
-  const dotClass={'📞 電話':'call','💬 LINE':'line','👥 見面':'meet','📋 提案':'proposal','✅ 成交':'deal','📝 備忘':'note'};
-  box.innerHTML=acts.map(a=>`
-    <div class="act-item">
-      <div class="act-dot ${dotClass[a.type]||'note'}">${(a.type||'').slice(0,2)}</div>
-      <div class="act-body">
-        <div class="act-header">
-          <span class="act-type">${a.type||''}</span>
-          <span class="act-time">${new Date(a.at).toLocaleString('zh-TW',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
-          <span class="act-del" onclick="deleteActivity('${cid}','${a.id}')">✕</span>
-        </div>
-        <div class="act-note">${(a.note||a.content||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}</div>
+  const acts=getActivities(cid).slice().sort((a,b)=>new Date(b.at)-new Date(a.at));
+  if(!acts.length){box.innerHTML='<div class="act-empty">尚無對話紀錄<br/><span style="font-size:11px;color:var(--sub2)">與 Bot 對話 3 則後自動匯入</span></div>';return;}
+  box.innerHTML=acts.map(a=>{
+    const dt=new Date(a.at);
+    const timeStr=dt.toLocaleString('zh-TW',{hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+    const body=(a.note||a.content||'（無內容）').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>');
+    return `<div class="act-item" style="padding:10px 12px;border-bottom:1px solid var(--card3)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:11px;color:var(--sub2);letter-spacing:.04em">🕐 ${timeStr}</span>
+        <span class="act-del" onclick="deleteActivity('${cid}','${a.id}')" style="cursor:pointer;color:var(--sub2);font-size:12px">✕</span>
       </div>
-    </div>`).join('');
+      <div style="font-size:13px;line-height:1.6;color:var(--fg)">${body}</div>
+    </div>`;
+  }).join('');
 }
 function addActivity(){
   if(!_actCustomerId) return crmToast('請先選擇一位客戶','err');
