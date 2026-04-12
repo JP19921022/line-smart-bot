@@ -1,0 +1,1725 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>LINE CTRL — NOVA</title>
+
+<!-- PWA / iOS 主畫面 App 支援 -->
+<link rel="manifest" href="/manifest.json"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="LINE監控"/>
+<link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+<meta name="theme-color" content="#7C3AED"/>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   NOVA — LINE CTRL 監控面板
+   設計語言：深宇宙深藍底 × 紫青粉漸層 × 圓角卡片 × 呼吸感
+   ═══════════════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root {
+  --bg:        #080D1A;
+  --bg2:       #0C1325;
+  --card:      #111827;
+  --card2:     #141E33;
+  --card3:     #1A2544;
+  --border:    rgba(255,255,255,0.07);
+  --border2:   rgba(255,255,255,0.12);
+
+  /* Gradient palette */
+  --g-main:    linear-gradient(135deg, #7C3AED 0%, #06B6D4 100%);
+  --g-pink:    linear-gradient(135deg, #EC4899 0%, #8B5CF6 100%);
+  --g-green:   linear-gradient(135deg, #10B981 0%, #06B6D4 100%);
+  --g-amber:   linear-gradient(135deg, #F59E0B 0%, #EF4444 100%);
+  --g-soft:    linear-gradient(135deg, #6366F1 0%, #A855F7 100%);
+
+  /* Solid accents */
+  --violet:    #8B5CF6;
+  --cyan:      #06B6D4;
+  --pink:      #EC4899;
+  --emerald:   #10B981;
+  --amber:     #F59E0B;
+  --red:       #EF4444;
+
+  /* Text */
+  --text:      #F1F5F9;
+  --text2:     #CBD5E1;
+  --sub:       #64748B;
+  --sub2:      #94A3B8;
+
+  /* Shadows */
+  --sh-card:   0 4px 24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.05) inset;
+  --sh-glow-v: 0 8px 32px rgba(124,58,237,0.35);
+  --sh-glow-c: 0 8px 32px rgba(6,182,212,0.3);
+  --sh-btn:    0 4px 20px rgba(124,58,237,0.5);
+
+  /* Legacy compat */
+  --pri:#7C3AED; --ok:#10B981; --danger:#EF4444;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+body{
+  font-family:'Inter',-apple-system,'PingFang TC','Noto Sans TC',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  min-height:100dvh;
+  font-size:14px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  /* iPhone 瀏海/底部 Home Bar 安全區域 */
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+
+/* ─────────────────────────────────────
+   FIXED HEADER
+───────────────────────────────────── */
+.app-header{
+  position:fixed;top:0;left:0;right:0;
+  height:calc(64px + env(safe-area-inset-top));
+  padding-top:env(safe-area-inset-top);
+  background:rgba(8,13,26,0.88);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-bottom:1px solid var(--border);
+  z-index:1000;
+}
+.header-inner{
+  max-width:1720px;margin:0 auto;
+  height:64px;padding:0 28px;
+  display:flex;align-items:center;gap:16px;
+}
+.header-brand{
+  display:flex;align-items:center;gap:12px;
+  flex-shrink:0;margin-right:12px;
+}
+.brand-mark{
+  width:38px;height:38px;
+  background:var(--g-main);
+  border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  color:white;font-weight:900;font-size:15px;letter-spacing:-0.04em;
+  box-shadow:var(--sh-glow-v);
+  flex-shrink:0;
+}
+.brand-name{
+  font-size:18px;font-weight:800;
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  letter-spacing:-0.03em;
+}
+.auth-chip{
+  background:rgba(124,58,237,0.18);
+  border:1px solid rgba(124,58,237,0.35);
+  color:#C4B5FD;
+  padding:3px 10px;border-radius:999px;
+  font-size:11px;font-weight:600;letter-spacing:0.03em;
+}
+.header-meta{display:flex;align-items:center;gap:12px;flex:1}
+.field-label{font-size:12px;font-weight:500;color:var(--sub2);white-space:nowrap;flex-shrink:0}
+.header-date{
+  background:var(--card)!important;
+  border:1px solid var(--border2)!important;
+  border-radius:10px;padding:7px 12px;
+  font-size:13px;font-family:inherit;
+  color:var(--text)!important;font-weight:500;
+  width:162px;flex-shrink:0;
+}
+.sync-text{font-size:11px;color:var(--sub);white-space:nowrap}
+.header-right{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.sound-icon{cursor:pointer;font-size:17px;opacity:0.7;transition:opacity .15s}
+.sound-icon:hover{opacity:1}
+.header-token{
+  background:var(--card)!important;
+  border:1px solid var(--border2)!important;
+  border-radius:10px;padding:8px 14px;
+  font-size:13px;color:var(--text)!important;
+  width:190px;
+}
+
+.version-badge{
+  background:var(--g-main);
+  color:white;padding:3px 10px;border-radius:999px;
+  font-size:10px;font-weight:700;letter-spacing:0.06em;
+  box-shadow:var(--sh-glow-v);flex-shrink:0;
+}
+/* ── iOS 相容 Toast & Confirm Modal ── */
+#iosToast{
+  position:fixed;bottom:calc(32px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%) translateY(20px);
+  background:#1E2A45;border:1px solid rgba(124,58,237,0.4);
+  color:#E2E8F0;padding:13px 22px;border-radius:14px;
+  font-size:14px;font-weight:500;white-space:pre-line;text-align:center;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;
+  z-index:9998;max-width:88vw;line-height:1.5;
+}
+#iosToast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+#iosToast.ok{border-color:rgba(16,185,129,0.5);background:#0D2A1E;}
+#iosToast.err{border-color:rgba(239,68,68,0.5);background:#2A0D0D;}
+
+#iosConfirm{
+  position:fixed;inset:0;z-index:9997;
+  background:rgba(8,13,26,0.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  display:none;align-items:flex-end;justify-content:center;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+#iosConfirm.show{display:flex;}
+.ios-confirm-sheet{
+  width:100%;max-width:480px;background:#111827;
+  border-radius:20px 20px 0 0;padding:24px 20px 20px;
+  display:flex;flex-direction:column;gap:14px;
+  border-top:1px solid rgba(124,58,237,0.3);
+}
+.ios-confirm-title{font-size:16px;font-weight:700;color:#E2E8F0;text-align:center;}
+.ios-confirm-msg{font-size:13px;color:#94A3B8;text-align:center;line-height:1.6;}
+.ios-confirm-btns{display:flex;gap:10px;}
+.ios-confirm-btns button{flex:1;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:700;cursor:pointer;}
+.ios-confirm-ok{background:linear-gradient(135deg,#7C3AED,#06B6D4);color:white;}
+.ios-confirm-cancel{background:#1E2A45;color:#94A3B8;border:1px solid rgba(255,255,255,0.1)!important;}
+
+.mobile-login-btn{
+  background:var(--g-main);color:white;border:none;
+  border-radius:999px;padding:5px 14px;
+  font-size:12px;font-weight:700;cursor:pointer;
+  box-shadow:0 2px 12px rgba(124,58,237,0.5);
+  flex-shrink:0;display:inline-flex;align-items:center;gap:5px;
+}
+
+/* ─────────────────────────────────────
+   APP WRAP
+───────────────────────────────────── */
+.app-wrap{
+  max-width:1720px;margin:0 auto;
+  padding:calc(84px + env(safe-area-inset-top)) 28px 52px;
+}
+
+/* ── 手機響應式佈局 ── */
+@media(max-width:768px){
+  .app-wrap{padding:calc(80px + env(safe-area-inset-top)) 14px calc(32px + env(safe-area-inset-bottom));}
+  .header-inner{padding:0 16px;gap:10px;}
+  .header-meta{display:none;}   /* 隱藏日期等桌面功能 */
+  .header-right{gap:8px;}
+  .header-token{display:none;}  /* 手機不顯示 token 輸入框 */
+  .brand-name{font-size:15px;}
+  .version-badge{display:none;}
+  .kpi-row{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .primary-grid{display:flex;flex-direction:column;gap:12px;}
+  .left-col,.right-col{width:100%;}
+  .panel{padding:14px;}
+  .btn{padding:10px 14px;font-size:13px;}
+  /* 手機已登入狀態標示加大 */
+  .auth-chip{font-size:12px;padding:4px 12px;}
+}
+
+/* ─────────────────────────────────────
+   KPI STRIP
+───────────────────────────────────── */
+.kpi-row{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:16px;margin-bottom:18px;
+}
+@media(max-width:1200px){.kpi-row{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:768px){.kpi-row{grid-template-columns:repeat(2,1fr);}}
+.card{
+  background:var(--card);
+  border-radius:20px;
+  border:1px solid var(--border);
+  padding:24px;
+  box-shadow:var(--sh-card);
+  transition:transform 0.22s, box-shadow 0.22s;
+  position:relative;overflow:hidden;
+}
+/* gradient glow chip at top-left of each KPI */
+.card::before{
+  content:'';position:absolute;
+  top:-30px;left:-30px;
+  width:100px;height:100px;
+  border-radius:50%;
+  opacity:0.12;pointer-events:none;
+}
+#cards .card:nth-child(1)::before{background:var(--violet)}
+#cards .card:nth-child(2)::before{background:var(--cyan)}
+#cards .card:nth-child(3)::before{background:var(--amber)}
+#cards .card:nth-child(4)::before{background:var(--emerald)}
+.card:hover{transform:translateY(-3px);box-shadow:0 8px 40px rgba(0,0,0,0.5),0 1px 0 rgba(255,255,255,0.07) inset}
+.k{font-size:11px;font-weight:600;color:var(--sub2);text-transform:uppercase;letter-spacing:0.12em}
+.v{
+  font-size:36px;font-weight:800;
+  font-family:'JetBrains Mono',monospace;
+  margin-top:10px;letter-spacing:-0.03em;
+  line-height:1;
+}
+#cards .card:nth-child(1) .v{
+  background:var(--g-soft);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+#cards .card:nth-child(2) .v{
+  background:var(--g-green);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+#cards .card:nth-child(3) .v{
+  background:var(--g-amber);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+#cards .card:nth-child(4) .v{
+  background:var(--g-green);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+#cards .card:nth-child(5)::before{background:var(--pink)}
+#cards .card:nth-child(6)::before{background:var(--cyan)}
+#cards .card:nth-child(5) .v{
+  background:var(--g-pink);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+#cards .card:nth-child(6) .v{
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.small{font-size:12px;color:var(--sub2)}
+
+/* ─────────────────────────────────────
+   ENTERPRISE ADDITIONS
+───────────────────────────────────── */
+/* Health dot indicators */
+.health-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.health-dot{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);}
+.health-dot.green{color:#10B981;border-color:rgba(16,185,129,0.3);}
+.health-dot.amber{color:#F59E0B;border-color:rgba(245,158,11,0.3);}
+.health-dot.red{color:#EF4444;border-color:rgba(239,68,68,0.3);}
+.health-dot::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
+
+/* Week calendar */
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:12px;}
+.week-day{background:var(--card2);border-radius:12px;padding:10px 8px;border:1px solid var(--border);min-height:90px;transition:border-color .2s;}
+.week-day.today{border-color:var(--violet);background:rgba(124,58,237,0.1);}
+.week-day.today .wd-label{color:var(--violet);font-weight:800;}
+.wd-label{font-size:11px;font-weight:600;color:var(--sub2);text-align:center;display:block;margin-bottom:6px;}
+.wd-date{font-size:18px;font-weight:800;text-align:center;display:block;margin-bottom:6px;line-height:1;}
+.wd-reminders{display:flex;flex-direction:column;gap:4px;}
+.wd-rem-item{font-size:10px;padding:3px 6px;border-radius:6px;background:rgba(139,92,246,0.15);color:#C4B5FD;border:1px solid rgba(139,92,246,0.2);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.wd-rem-item.done{opacity:0.4;text-decoration:line-through;}
+@media(max-width:768px){.week-grid{grid-template-columns:repeat(7,1fr);gap:4px;}.week-day{padding:6px 4px;min-height:60px;}.wd-date{font-size:14px;}}
+
+/* Notepad */
+.notepad-area{
+  width:100%;min-height:100px;resize:vertical;
+  background:var(--card2);border:1px solid var(--border2);
+  border-radius:12px;padding:12px;
+  font-size:13px;color:var(--text);font-family:'Inter',sans-serif;
+  line-height:1.7;margin-top:8px;
+  transition:border-color .2s;
+}
+.notepad-area:focus{outline:none;border-color:var(--violet);}
+.notepad-save-hint{font-size:11px;color:var(--sub);margin-top:4px;text-align:right;}
+
+/* Broadcast history */
+.bcast-hist-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.bcast-hist-row:last-child{border-bottom:none;}
+.bcast-hist-row .bh-title{flex:1;font-weight:600;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bcast-hist-row .bh-count{color:var(--cyan);font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+.bcast-hist-row .bh-date{color:var(--sub);flex-shrink:0;}
+.bcast-summary{display:flex;gap:16px;padding:10px 0;border-bottom:1px solid var(--border);margin-bottom:8px;flex-wrap:wrap;}
+.bcast-summary-item{font-size:12px;display:flex;flex-direction:column;gap:2px;}
+.bcast-summary-item .bs-val{font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;}
+
+/* Quick reminder input */
+.reminder-add-row{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+.reminder-list{margin-top:10px;display:flex;flex-direction:column;gap:6px;}
+.reminder-item{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--card2);border-radius:10px;border:1px solid var(--border);}
+.reminder-item.done-item{opacity:0.5;}
+.reminder-item .ri-date{font-size:11px;color:var(--sub2);flex-shrink:0;}
+.reminder-item .ri-text{flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.reminder-item .ri-del{color:var(--red);cursor:pointer;font-size:14px;opacity:0.6;transition:opacity .15s;flex-shrink:0;}
+.reminder-item .ri-del:hover{opacity:1;}
+.reminder-item input[type=checkbox]{accent-color:var(--violet);cursor:pointer;flex-shrink:0;}
+
+/* ─────────────────────────────────────
+   PRIMARY GRID
+───────────────────────────────────── */
+.primary-grid{
+  display:grid;
+  grid-template-columns:290px minmax(0,1fr) 296px;
+  gap:16px;align-items:start;
+}
+
+/* ─────────────────────────────────────
+   PANELS
+───────────────────────────────────── */
+.panel{
+  background:var(--card);
+  border-radius:20px;
+  border:1px solid var(--border);
+  box-shadow:var(--sh-card);
+}
+.chart{
+  background:var(--card);
+  border-radius:20px;
+  border:1px solid var(--border);
+  box-shadow:var(--sh-card);
+}
+.panel-title{
+  font-size:11px;font-weight:700;
+  letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--sub2);
+  margin-bottom:18px;
+  display:flex;align-items:center;gap:8px;
+}
+.panel-title::before{
+  content:'';width:18px;height:2px;
+  background:var(--g-main);border-radius:2px;flex-shrink:0;
+}
+
+/* ─────────────────────────────────────
+   CONTROL PANEL (left)
+───────────────────────────────────── */
+.ctrl-panel{
+  padding:24px;
+  display:flex;flex-direction:column;gap:0;
+}
+.ctrl-section{padding:18px 0}
+.ctrl-section:first-child{padding-top:0}
+.ctrl-section:last-child{padding-bottom:0}
+.ctrl-section-head{
+  font-size:10px;font-weight:700;
+  letter-spacing:0.16em;text-transform:uppercase;
+  color:var(--violet);
+  margin-bottom:14px;
+}
+.divider{height:1px;background:var(--border);margin:0}
+.btn-cluster{display:flex;flex-wrap:wrap;gap:7px}
+.field-row{display:flex;flex-wrap:wrap;gap:7px;width:100%;margin-top:9px}
+.field-row:first-child{margin-top:0}
+.field-grow{flex:1;min-width:0}
+
+/* ─────────────────────────────────────
+   ANALYSIS (center)
+───────────────────────────────────── */
+.analysis-col{display:flex;flex-direction:column;gap:16px}
+.analysis-panel{padding:24px}
+
+/* Radar */
+.radar-grid{
+  position:relative;height:244px;
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:14px;overflow:hidden;
+}
+.radar-grid::before{
+  content:'';position:absolute;
+  left:50%;top:0;bottom:0;width:1px;
+  background:var(--border2);
+}
+.radar-grid::after{
+  content:'';position:absolute;
+  top:50%;left:0;right:0;height:1px;
+  background:var(--border2);
+}
+.q-label{
+  position:absolute;font-size:10px;
+  color:var(--sub2);font-weight:600;opacity:0.8;
+}
+.q1{top:10px;left:10px}.q2{top:10px;right:10px;text-align:right}
+.q3{bottom:10px;left:10px}.q4{bottom:10px;right:10px;text-align:right}
+.dot{position:absolute;width:12px;height:12px;border-radius:50%}
+.hot{background:var(--red);box-shadow:0 0 10px rgba(239,68,68,.7),0 0 20px rgba(239,68,68,.3)}
+.warm{background:var(--amber);box-shadow:0 0 10px rgba(245,158,11,.7),0 0 20px rgba(245,158,11,.3)}
+.cool{background:var(--emerald);box-shadow:0 0 10px rgba(16,185,129,.7),0 0 20px rgba(16,185,129,.3)}
+.quadrant-btns{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+
+/* Trend Chart */
+.chart{padding:24px}
+.bar-wrap{display:flex;align-items:flex-end;gap:6px;height:150px}
+.bar{
+  flex:1;min-height:4px;border-radius:8px 8px 0 0;
+  background:var(--g-main);
+  position:relative;
+  box-shadow:0 0 14px rgba(124,58,237,0.4);
+}
+.bar span{
+  position:absolute;bottom:100%;left:50%;
+  transform:translateX(-50%);
+  font-size:10px;color:var(--sub2);
+  font-family:'JetBrains Mono',monospace;white-space:nowrap;
+  margin-bottom:3px;
+}
+.bar-labels{display:flex;gap:6px;margin-top:8px;color:var(--sub);font-size:11px}
+.bar-labels div{flex:1;text-align:center}
+.wave-box{
+  width:100%;height:150px;
+  border:1px solid var(--border);
+  border-radius:12px;
+  background:var(--card2);
+  overflow:hidden;position:relative;
+}
+.wave-svg{width:100%;height:100%}
+
+/* ─────────────────────────────────────
+   MANAGEMENT PANEL (right)
+───────────────────────────────────── */
+.mgmt-panel{
+  padding:24px;
+  position:sticky;top:80px;
+  display:flex;flex-direction:column;gap:18px;
+  max-height:calc(100vh - 96px);
+  overflow-y:auto;
+}
+.mgmt-label{
+  font-size:10px;font-weight:700;
+  color:var(--sub);
+  text-transform:uppercase;letter-spacing:0.14em;
+  margin-bottom:9px;
+}
+.inner-panel{
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:14px;padding:16px;
+}
+.inner-panel-title{
+  font-size:12px;font-weight:700;
+  color:var(--text2);
+  margin-bottom:12px;letter-spacing:0.02em;
+}
+
+/* ─────────────────────────────────────
+   ALERT
+───────────────────────────────────── */
+.alert{
+  display:none;
+  background:rgba(239,68,68,0.12);
+  border:1px solid rgba(239,68,68,0.3);
+  border-radius:14px;padding:18px;
+  color:var(--text);
+}
+
+/* ─────────────────────────────────────
+   LOWER SECTIONS
+───────────────────────────────────── */
+.lower-wrap{margin-top:16px;display:flex;flex-direction:column;gap:12px}
+.msg-library{padding:24px}
+
+/* Collapsibles */
+.collapsible{overflow:hidden}
+.collapsible summary{
+  list-style:none;cursor:pointer;
+  padding:18px 24px;
+  font-weight:700;font-size:12px;
+  letter-spacing:0.08em;text-transform:uppercase;
+  color:var(--text2);
+  display:flex;align-items:center;gap:10px;
+  transition:background 0.15s;user-select:none;
+}
+.collapsible summary:hover{background:rgba(255,255,255,0.03)}
+.collapsible summary::-webkit-details-marker{display:none}
+.collapsible summary::before{
+  content:'›';
+  font-size:20px;font-weight:300;
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  transition:transform 0.2s;
+  display:inline-block;line-height:1;width:14px;flex-shrink:0;
+}
+details[open] summary::before{transform:rotate(90deg)}
+.collapsible-content{padding:4px 24px 24px}
+
+/* ─────────────────────────────────────
+   BUTTONS
+───────────────────────────────────── */
+.btn{
+  background:var(--g-main);
+  color:white;border:none;
+  border-radius:10px;
+  padding:9px 16px;
+  font-size:12px;font-weight:600;font-family:inherit;
+  letter-spacing:0.02em;cursor:pointer;
+  transition:all 0.18s;white-space:nowrap;
+  box-shadow:var(--sh-btn);
+  min-height:36px;
+}
+.btn:hover{
+  opacity:0.88;
+  transform:translateY(-1px);
+  box-shadow:0 6px 28px rgba(124,58,237,0.6);
+}
+.btn:active{transform:translateY(0);opacity:1}
+.btn-sm{padding:5px 12px;font-size:11px;min-height:28px}
+.btn-ghost{
+  background:var(--card2);
+  color:var(--text2);
+  border:1px solid var(--border2);
+  box-shadow:none;
+}
+.btn-ghost:hover{
+  background:var(--card3);
+  border-color:rgba(139,92,246,0.4);
+  color:var(--text);
+  box-shadow:none;transform:translateY(-1px);
+}
+.btn-q{
+  background:var(--card2)!important;
+  color:var(--sub2)!important;
+  border:1px solid var(--border2)!important;
+  box-shadow:none!important;
+  font-size:11px!important;padding:7px 11px!important;
+  border-radius:999px!important;
+}
+.btn-q:hover{
+  background:var(--g-main)!important;
+  color:white!important;border-color:transparent!important;
+  box-shadow:var(--sh-btn)!important;
+  transform:translateY(-1px);
+}
+.btn.warn,.btn-danger{
+  background:linear-gradient(135deg,#EF4444,#DC2626);
+  box-shadow:0 4px 18px rgba(239,68,68,0.45);
+}
+.btn.warn:hover,.btn-danger:hover{
+  opacity:0.88;box-shadow:0 6px 28px rgba(239,68,68,0.6);
+}
+
+/* ─────────────────────────────────────
+   INPUTS / SELECTS / TEXTAREAS
+───────────────────────────────────── */
+input,textarea,select{
+  background:var(--card2)!important;
+  color:var(--text)!important;
+  border:1px solid var(--border2)!important;
+  border-radius:10px;
+  padding:9px 12px;
+  font-family:inherit;font-size:13px;
+  transition:border-color 0.15s,box-shadow 0.15s;
+  outline:none;width:100%;
+}
+input:focus,textarea:focus,select:focus{
+  border-color:rgba(139,92,246,0.6)!important;
+  box-shadow:0 0 0 3px rgba(124,58,237,0.15)!important;
+}
+input[type="file"]{
+  padding:8px 12px;
+  background:var(--card3)!important;
+  font-size:12px;cursor:pointer;
+}
+select option{background:var(--card2);color:var(--text)}
+textarea{
+  min-height:140px;
+  font-family:'JetBrains Mono',monospace;
+  line-height:1.6;resize:vertical;
+}
+input::placeholder,textarea::placeholder{color:var(--sub)!important}
+code{
+  background:rgba(139,92,246,0.15);
+  padding:2px 8px;border-radius:5px;
+  color:#C4B5FD;
+  font-family:'JetBrains Mono',monospace;font-size:12px;
+}
+
+/* ─────────────────────────────────────
+   TABLES
+───────────────────────────────────── */
+.tbl{width:100%;border-collapse:collapse;table-layout:fixed}
+.tbl th,.tbl td{
+  border-bottom:1px solid var(--border);
+  padding:10px 12px;font-size:12px;
+  vertical-align:top;word-break:break-word;text-align:left;
+}
+.tbl th{
+  background:rgba(255,255,255,0.03);
+  color:var(--sub2);text-transform:uppercase;
+  letter-spacing:0.08em;font-size:11px;font-weight:700;
+}
+.tbl tr:hover td{background:rgba(139,92,246,0.06)}
+
+/* ─────────────────────────────────────
+   STATUS BADGES
+───────────────────────────────────── */
+.status-badge{
+  display:inline-block;padding:5px 14px;
+  border-radius:999px;font-weight:600;font-size:12px;letter-spacing:0.03em;
+}
+.status-on{background:rgba(16,185,129,0.15);color:#34D399;border:1px solid rgba(16,185,129,0.3)}
+.status-off{background:rgba(239,68,68,0.15);color:#FCA5A5;border:1px solid rgba(239,68,68,0.3)}
+
+/* ─────────────────────────────────────
+   DROP ZONE
+───────────────────────────────────── */
+.drop{
+  border:2px dashed var(--border2);border-radius:12px;
+  padding:28px;text-align:center;
+  color:var(--sub2);background:var(--card2);
+  font-size:13px;cursor:pointer;
+  transition:all 0.2s;margin-top:12px;
+}
+.drop:hover{
+  border-color:var(--violet);
+  background:rgba(124,58,237,0.08);
+  color:var(--violet);
+}
+
+/* ─────────────────────────────────────
+   MISC
+───────────────────────────────────── */
+.validation-msg{font-size:12px;margin-top:6px;min-height:16px}
+#mediaValidationMsg{color:var(--red)}
+h3{margin:18px 0 10px;font-size:13px;font-weight:700;color:var(--text2)}
+.cronline{
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  color:#C4B5FD;background:rgba(139,92,246,0.12);
+  padding:5px 10px;border-radius:6px;word-break:break-all;
+}
+
+/* ─────────────────────────────────────
+   3D PRO
+───────────────────────────────────── */
+body.mode3d .card:hover{
+  transform:perspective(900px) rotateX(4deg) rotateY(-4deg) translateY(-6px) scale(1.02);
+}
+
+/* ─────────────────────────────────────
+   SCROLLBAR
+───────────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:999px}
+::-webkit-scrollbar-thumb:hover{background:rgba(139,92,246,0.4)}
+
+/* ─────────────────────────────────────
+   RESPONSIVE
+───────────────────────────────────── */
+@media(max-width:1280px){
+  .primary-grid{grid-template-columns:270px minmax(0,1fr) 270px}
+}
+@media(max-width:1100px){
+  .primary-grid{grid-template-columns:1fr}
+  .mgmt-panel{position:relative;top:auto;max-height:none}
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+}
+@media(max-width:600px){
+  .kpi-row{grid-template-columns:1fr}
+  .header-inner{padding:0 14px;gap:8px}
+  .brand-name{display:none}
+  .header-token{width:130px}
+}
+body.layout-clean,body.layout-future{}
+</style>
+</head>
+<body>
+
+<!-- Fixed Header -->
+<header class="app-header">
+  <div class="header-inner">
+    <div class="header-brand">
+      <div class="brand-mark">L</div>
+      <span class="brand-name">LINE CTRL</span>
+      <span id="authStatus" class="auth-chip">尚未登入</span>
+      <span class="version-badge">✦ NOVA</span>
+      <!-- 手機專用登入按鈕：未登入時顯示 -->
+      <button id="mobileLoginBtn" class="mobile-login-btn" onclick="showMobileLogin()" style="display:none">🔑 登入</button>
+    </div>
+    <div class="header-meta">
+      <span class="field-label">戰情日</span>
+      <input id="date" type="date" class="header-date"/>
+      <span id="lastSyncAt" class="sync-text">最後同步：--</span>
+    </div>
+    <div class="header-right">
+      <span id="soundIcon" class="sound-icon" onclick="toggleSound()">🔊</span>
+      <button class="btn btn-sm btn-ghost" onclick="location.href='/crm.html'" style="flex-shrink:0">👥 CRM</button>
+      <input id="token" type="password" placeholder="Admin Token" class="header-token"/>
+      <button class="btn btn-sm" onclick="saveToken()">登入</button>
+    </div>
+  </div>
+</header>
+
+<div id="lottieSpark" style="position:fixed;right:22px;bottom:22px;width:68px;height:68px;opacity:0.8;pointer-events:none;z-index:30"></div>
+
+<div class="app-wrap">
+
+  <!-- KPI Strip -->
+  <section id="cards" class="kpi-row">
+    <div class="card">
+      <div class="k">今日觸達</div>
+      <div class="v num" id="kpiReach" data-val="0">0</div>
+    </div>
+    <div class="card">
+      <div class="k">回覆率</div>
+      <div class="v num" id="kpiReplyRate" data-val="0" data-suffix="%">0%</div>
+    </div>
+    <div class="card">
+      <div class="k">風險狀態</div>
+      <div class="v" id="kpiRisk">監控中</div>
+    </div>
+    <div class="card">
+      <div class="k">今日問卷回收</div>
+      <div class="v num" id="kpiSurvey" data-val="0">0</div>
+      <div class="small" id="kpiSurveyTrend" style="margin-top:6px">近7日：0</div>
+    </div>
+    <div class="card">
+      <div class="k">本月群發次數</div>
+      <div class="v num" id="kpiMonthBcast" data-val="0">0</div>
+      <div class="small" id="kpiMonthBcastSub" style="margin-top:6px">共觸達 0 人</div>
+    </div>
+    <div class="card">
+      <div class="k">OA 健康狀態</div>
+      <div class="v" id="kpiHealth" style="font-size:22px;margin-top:8px">✅ 正常</div>
+      <div class="small" id="kpiHealthSub" style="margin-top:6px">封鎖/退訂監控中</div>
+    </div>
+  </section>
+
+  <!-- Primary 3-Column Grid -->
+  <div class="primary-grid">
+
+    <!-- Left: Control Panel -->
+    <aside class="panel ctrl-panel">
+
+      <div class="ctrl-section">
+        <div class="ctrl-section-head">工作區</div>
+        <div class="btn-cluster">
+          <button class="btn" onclick="refreshAll()">刷新</button>
+          <button class="btn" onclick="syncNow()">立即同步</button>
+          <button class="btn btn-ghost" onclick="exportCSV()">匯出 CSV</button>
+          <button class="btn btn-ghost" onclick="genReport()">今日報告</button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-section-head">定聯操作</div>
+        <select id="careTemplateSelect" onchange="loadCareMessages()" style="margin-bottom:8px"></select>
+        <select id="careMessageSelect"></select>
+        <div class="field-row">
+          <input id="careMediaFile" type="file" accept="image/*,video/*" style="flex:1;min-width:0"/>
+          <button class="btn" onclick="uploadCareMedia()" style="flex-shrink:0">上傳附件</button>
+        </div>
+        <button class="btn btn-danger" onclick="runCareNow()" style="width:100%;margin-top:7px">立即定聯（手動）</button>
+        <input id="careMediaUrl" placeholder="公開媒體網址 https://...（jpg/png/mp4）" style="margin-top:9px" oninput="validateMediaInput()"/>
+        <div id="videoPreviewRow" style="display:none;margin-top:7px">
+          <input id="careVideoPreviewUrl" placeholder="影片封面圖 https://..." oninput="validateMediaInput()"/>
+        </div>
+        <div class="field-row" style="margin-top:9px">
+          <input id="testUserId" placeholder="測試 userId（U開頭32碼）" style="flex:1;min-width:0"/>
+          <button class="btn" onclick="sendMediaTestToSingleUser()" style="flex-shrink:0;font-size:11px">測試發送</button>
+        </div>
+        <div id="mediaValidationMsg" class="validation-msg"></div>
+        <div class="small" id="careMediaHint" style="margin-top:6px"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="ctrl-section">
+        <div class="ctrl-section-head">系統設定</div>
+        <div class="btn-cluster">
+          <button class="btn btn-ghost" onclick="toggleSound()" id="soundBtn">音效：關</button>
+          <button class="btn btn-ghost" onclick="toggleShowcase()" id="showBtn">展示模式：關</button>
+          <button class="btn btn-ghost" onclick="toggle3D()" id="mode3dBtn">3D Pro：關</button>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- Center: Analytics -->
+    <main class="analysis-col">
+
+      <div class="panel analysis-panel">
+        <div class="panel-title">客群象限</div>
+        <div class="radar-grid">
+          <span class="q-label q1">高價值 × 高風險</span>
+          <span class="q-label q2">高價值 × 穩定</span>
+          <span class="q-label q3">低價值 × 高風險</span>
+          <span class="q-label q4">低價值 × 穩定</span>
+          <span class="dot hot" style="left:22%;top:26%"></span>
+          <span class="dot hot" style="left:36%;top:38%"></span>
+          <span class="dot warm" style="left:68%;top:24%"></span>
+          <span class="dot warm" style="left:76%;top:33%"></span>
+          <span class="dot cool" style="left:28%;top:72%"></span>
+          <span class="dot cool" style="left:72%;top:69%"></span>
+        </div>
+        <div class="quadrant-btns">
+          <button class="btn btn-q" onclick="selectQuadrant('high_value_high_risk')">高價值高風險</button>
+          <button class="btn btn-q" onclick="selectQuadrant('high_value_stable')">高價值穩定</button>
+          <button class="btn btn-q" onclick="selectQuadrant('low_value_high_risk')">低價值高風險</button>
+          <button class="btn btn-q" onclick="selectQuadrant('low_value_stable')">低價值穩定</button>
+        </div>
+        <div class="small" id="quadrantHint" style="margin-top:10px;color:var(--violet)">點選象限可自動篩出名單</div>
+        <table class="tbl" id="quadrantTargets" style="margin-top:12px"></table>
+      </div>
+
+      <div class="alert" id="alertBox"></div>
+      <div id="sec-overview"></div>
+
+      <div class="chart" id="trendCard">
+        <div class="panel-title">近 7 日定聯趨勢</div>
+        <div class="bar-wrap" id="trendBars"></div>
+        <div class="bar-labels" id="trendLabels"></div>
+      </div>
+
+    </main>
+
+    <!-- Right: Management -->
+    <aside class="panel mgmt-panel">
+      <div class="panel-title">功能區</div>
+
+      <div>
+        <div class="mgmt-label">異常</div>
+        <div class="small" id="warAnomalies">等待告警資料...</div>
+      </div>
+
+      <div>
+        <div class="mgmt-label">待決策</div>
+        <div class="small" id="globalManualState">讀取中...</div>
+        <div class="small" style="margin-top:6px">A/B 實驗：<span id="abEnabled">-</span></div>
+      </div>
+
+      <div>
+        <div class="mgmt-label">一鍵動作</div>
+        <div class="btn-cluster">
+          <button class="btn btn-danger" onclick="toggleGlobalPause(true)">全域暫停</button>
+          <button class="btn" onclick="retryStep('sync_render_contacts')">立即重試</button>
+          <button class="btn btn-ghost" onclick="toggleGlobalPause(false)">恢復自動</button>
+        </div>
+      </div>
+
+      <div class="inner-panel">
+        <div class="inner-panel-title">模擬區</div>
+        <div class="small" id="segSummary">分群讀取中...</div>
+        <div class="field-row">
+          <select id="drySegment" style="flex:1">
+            <option value="all">全部</option>
+            <option value="new">新客(7天)</option>
+            <option value="silent">沉默(30天)</option>
+            <option value="high">高價值</option>
+          </select>
+          <button class="btn" onclick="runDryRun()" style="flex-shrink:0">Dry Run</button>
+        </div>
+        <table class="tbl" id="dryRunTbl" style="margin-top:8px"></table>
+      </div>
+
+      <div class="inner-panel">
+        <div class="inner-panel-title">OA 群發登記</div>
+        <input id="oaTitle" placeholder="訊息名稱（例：週末影片關懷）" style="margin-bottom:8px"/>
+        <div class="field-row">
+          <input id="oaCount" type="number" min="1" placeholder="發送人數" style="flex:1;min-width:0"/>
+          <input id="oaNote" placeholder="備註（可空）" style="flex:2;min-width:0"/>
+        </div>
+        <button class="btn" onclick="saveOaManualLog()" style="width:100%;margin-top:10px">登記這次群發</button>
+        <div class="small" id="oaLogHint" style="margin-top:6px"></div>
+      </div>
+
+      <div class="inner-panel">
+        <div class="inner-panel-title">版面快照</div>
+        <input id="presetName" placeholder="快照名稱（例：night_v1）" style="margin-bottom:8px"/>
+        <button class="btn" onclick="savePreset()" style="width:100%;margin-bottom:10px">另存目前版面</button>
+        <select id="presetList" style="margin-bottom:8px"></select>
+        <button class="btn btn-ghost" onclick="applyPreset()" style="width:100%">套用選取版面</button>
+      </div>
+
+      <div class="inner-panel">
+        <div class="inner-panel-title">📝 工作備忘錄</div>
+        <textarea id="dashboardNotepad" class="notepad-area" placeholder="隨時記下待辦、想法、注意事項…" oninput="onNotepadInput()"></textarea>
+        <div class="notepad-save-hint" id="notepadSaveHint">已自動儲存</div>
+      </div>
+
+      <div class="inner-panel">
+        <div class="inner-panel-title">🚦 OA 健康燈號</div>
+        <div class="health-row" id="healthDots">
+          <span class="health-dot green" id="hdReply">回覆率正常</span>
+          <span class="health-dot green" id="hdTask">任務正常</span>
+          <span class="health-dot green" id="hdBlock">封鎖監控</span>
+        </div>
+        <div class="small" style="margin-top:8px" id="healthHint">系統健康狀態將在刷新後更新</div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- Lower Sections -->
+  <div class="lower-wrap">
+
+    <details class="panel collapsible">
+      <summary id="sec-ops">任務明細</summary>
+      <div class="collapsible-content">
+        <table class="tbl" id="tasks"></table>
+        <h3>Top 回覆用戶</h3>
+        <table class="tbl" id="topResponders"></table>
+        <h3>今日主動定聯清單</h3>
+        <table class="tbl" id="care"></table>
+      </div>
+    </details>
+
+    <details class="panel collapsible">
+      <summary id="sec-contacts">名單</summary>
+      <div class="collapsible-content">
+        <button class="btn" onclick="loadContacts()">打開現有用戶名單</button>
+        <div id="contacts" style="margin-top:14px"></div>
+        <div class="inner-panel" style="margin-top:16px">
+          <div class="inner-panel-title">使用者時間軸</div>
+          <div class="small">在名單中按「時間軸」查看該 user 的歷史節點。</div>
+          <div id="timelineBox" class="small" style="margin-top:8px"></div>
+        </div>
+        <h3>拖移新增名單（JSON）</h3>
+        <div class="drop" id="drop">把 JSON 檔拖到這裡（格式：[{userId, name, enabled, ...}]）</div>
+        <div id="importResult" class="small" style="margin-top:8px"></div>
+      </div>
+    </details>
+
+    <details class="panel collapsible">
+      <summary id="sec-ab">A / B 實驗</summary>
+      <div class="collapsible-content">
+        <div class="small">可啟用/停用實驗，統計為 placeholder。</div>
+        <div style="margin:12px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          實驗狀態：<span id="abEnabledDup">-</span>
+          <button class="btn" onclick="setAb(true)">啟用</button>
+          <button class="btn btn-danger" onclick="setAb(false)">停用</button>
+        </div>
+        <table class="tbl" id="abStats"></table>
+      </div>
+    </details>
+
+    <details class="panel collapsible">
+      <summary id="sec-schedule">排程</summary>
+      <div class="collapsible-content">
+        <table class="tbl" id="scheduleTbl"></table>
+      </div>
+    </details>
+
+    <div class="panel msg-library">
+      <div class="panel-title">訊息項目庫</div>
+      <div class="field-row" style="margin-top:0">
+        <input id="msgName" placeholder="項目名稱（例：週末問候A）" style="flex:2;min-width:0"/>
+        <input id="msgCategory" placeholder="分類（例：關懷）" style="flex:1;min-width:0"/>
+        <select id="msgType" onchange="toggleFlexBuilder()" style="flex:1;min-width:100px">
+          <option value="text">純文字</option>
+          <option value="image">圖片連結</option>
+          <option value="flex_carousel">多頁訊息(Flex)</option>
+        </select>
+      </div>
+      <textarea id="msgText" placeholder="訊息內容（Flex 可留空）" style="margin-top:10px"></textarea>
+      <div class="field-row" style="margin-top:8px">
+        <input id="msgMediaFile" type="file" accept="image/*" style="flex:1;min-width:0"/>
+        <button class="btn" onclick="uploadMsgMedia()" style="flex-shrink:0">上傳圖片</button>
+      </div>
+      <div style="position:relative;margin-top:6px">
+        <input id="msgMedia" placeholder="圖片 URL（上傳後自動填入，也可手動貼上）" style="width:100%;padding-right:36px"/>
+        <span id="msgMediaPreviewIcon" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:16px;display:none" onclick="previewMsgMediaImg()" title="預覽圖片">🖼️</span>
+      </div>
+      <div id="msgMediaHint" class="small" style="margin-top:4px;min-height:16px"></div>
+      <div id="flexBuilder" style="display:none;margin-top:12px;border:2px dashed rgba(139,92,246,0.3);padding:14px;border-radius:12px;background:var(--card2)">
+        <div class="btn-cluster">
+          <button class="btn" onclick="addFlexCard()">新增一格</button>
+          <button class="btn" onclick="buildFlexJson()">產生多頁訊息</button>
+        </div>
+        <div id="flexCards" style="margin-top:10px"></div>
+      </div>
+      <textarea id="msgFlex" placeholder="系統自動產生 Flex JSON（一般不用手動改）" style="margin-top:10px"></textarea>
+      <div class="field-row" style="margin-top:12px">
+        <button class="btn" onclick="saveMsgItem()" style="flex-shrink:0">儲存項目</button>
+        <select id="msgItems" style="flex:1;min-width:180px"></select>
+        <button class="btn btn-ghost" onclick="useMsgItem()" style="flex-shrink:0">套用到定聯</button>
+        <button class="btn btn-danger" onclick="deleteMsgItem()" style="flex-shrink:0">刪除</button>
+      </div>
+    </div>
+
+    <!-- ── 本週行事曆 + 快速提醒 ── -->
+    <div class="panel" style="padding:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+        <div class="panel-title" style="margin:0">📅 本週排程行事曆</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="reminderDate" type="date" style="background:var(--card2);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--text);"/>
+          <input id="reminderText" placeholder="快速備忘（例：週日定期推播）" style="flex:1;min-width:160px;font-size:12px;"/>
+          <button class="btn btn-sm" onclick="addReminder()" style="flex-shrink:0">新增提醒</button>
+        </div>
+      </div>
+      <div class="week-grid" id="weekCalGrid"></div>
+    </div>
+
+    <!-- ── 群發歷史記錄 ── -->
+    <div class="panel" style="padding:24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div class="panel-title" style="margin:0">📈 群發歷史記錄</div>
+        <button class="btn btn-ghost btn-sm" onclick="clearBroadcastHistory()" style="font-size:11px">清除記錄</button>
+      </div>
+      <div class="bcast-summary" id="bcastSummary">
+        <div class="bcast-summary-item"><span class="small">本月群發</span><span class="bs-val" id="bsMonthCount" style="color:var(--violet)">0</span><span class="small">次</span></div>
+        <div class="bcast-summary-item"><span class="small">本月觸達</span><span class="bs-val" id="bsMonthReach" style="color:var(--cyan)">0</span><span class="small">人次</span></div>
+        <div class="bcast-summary-item"><span class="small">累計群發</span><span class="bs-val" id="bsTotalCount" style="color:var(--emerald)">0</span><span class="small">次</span></div>
+        <div class="bcast-summary-item"><span class="small">累計觸達</span><span class="bs-val" id="bsTotalReach" style="color:var(--amber)">0</span><span class="small">人次</span></div>
+      </div>
+      <div id="bcastHistList" style="max-height:240px;overflow-y:auto;"></div>
+      <div class="small" id="bcastHistEmpty" style="padding:16px;text-align:center;display:none">尚無群發記錄。在「OA 群發登記」新增後會自動顯示在這裡。</div>
+    </div>
+
+    <div class="panel" id="sec-rules" style="padding:24px">
+      <div class="panel-title">規則編輯器（rules.json）</div>
+      <div class="small">目標檔案：<code>~/line-bot/rules.json</code>，包含 emergencyDailyLimitCap。</div>
+      <textarea id="rulesEditor" style="margin-top:12px"></textarea>
+      <div class="btn-cluster" style="margin-top:12px">
+        <button class="btn" onclick="loadRules()">載入規則</button>
+        <button class="btn" onclick="saveRules()">儲存規則</button>
+        <button class="btn btn-ghost" onclick="applyRulePreset('single')">單人定聯版</button>
+        <button class="btn btn-ghost" onclick="applyRulePreset('conservative')">保守版</button>
+        <button class="btn btn-ghost" onclick="applyRulePreset('balanced')">平衡版</button>
+        <button class="btn btn-ghost" onclick="applyRulePreset('aggressive')">積極版</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+<script>
+function twDateISO(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());}
+function q(){return document.getElementById('date').value || twDateISO();}
+function token(){return localStorage.getItem('dashboard_admin_token')||'';}
+function saveToken(){localStorage.setItem('dashboard_admin_token',document.getElementById('token').value.trim()); refreshAll();}
+function applyThemeVars(theme){const root=document.documentElement;if(theme==='blue'){root.style.setProperty('--bg','#090f1f');root.style.setProperty('--bg2','#161e45');root.style.setProperty('--panel','#151d47cc');root.style.setProperty('--line','#5572d9');root.style.setProperty('--pri','#7f7bff');root.style.setProperty('--pri2','#4a6dff');root.style.setProperty('--sub','#c8d6ff');}else{root.style.setProperty('--bg','#0a0f24');root.style.setProperty('--bg2','#1a2750');root.style.setProperty('--panel','#17224acc');root.style.setProperty('--line','#5b8dff');root.style.setProperty('--pri','#9b72ff');root.style.setProperty('--pri2','#5ca5ff');root.style.setProperty('--sub','#c7d8ff');}}
+function animateUiSwitch(){
+  if(!window.gsap) return;
+  gsap.fromTo('.panel,.card,.chart',{scale:0.985,opacity:0.88,filter:'blur(2px)'},{scale:1,opacity:1,filter:'blur(0px)',duration:0.85,ease:'elastic.out(1,0.7)',stagger:0.02});
+}
+function setTheme(theme){localStorage.setItem('dashboard_theme',theme);applyThemeVars(theme);animateUiSwitch();}
+function setLayout(name){document.body.classList.remove('layout-clean','layout-future');if(name==='clean-business') document.body.classList.add('layout-clean');if(name==='future-tech') document.body.classList.add('layout-future');localStorage.setItem('dashboard_layout',name);animateUiSwitch();}
+function toggleShowcase(){const on=!document.body.classList.contains('showcase');document.body.classList.toggle('showcase',on);localStorage.setItem('dashboard_showcase',on?'1':'0');document.getElementById('showBtn').innerText=`展示模式：${on?'開':'關'}`;}
+function toggle3D(){const on=!document.body.classList.contains('mode3d');document.body.classList.toggle('mode3d',on);localStorage.setItem('dashboard_mode3d',on?'1':'0');document.getElementById('mode3dBtn').innerText=`3D Pro：${on?'開':'關'}`;}
+let soundOn=localStorage.getItem('dashboard_sound')==='1';
+function beep(){if(!soundOn) return;const ctx=new (window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.type='sine';o.frequency.value=520;g.gain.value=0.03;o.start();o.frequency.exponentialRampToValueAtTime(880,ctx.currentTime+0.08);g.gain.exponentialRampToValueAtTime(0.0001,ctx.currentTime+0.08);o.stop(ctx.currentTime+0.08);}
+function toggleSound(){soundOn=!soundOn;localStorage.setItem('dashboard_sound',soundOn?'1':'0');document.getElementById('soundBtn').innerText=`音效：${soundOn?'開':'關'}`;document.getElementById('soundIcon').innerText=soundOn?'🔊':'🔈';}
+async function j(u,o={}){o.headers={...(o.headers||{}),'x-admin-token':token()};const r=await fetch(u,o);if(r.status===401) throw new Error('未授權');return r.json();}
+function tStep(s){const m={'sync_materials':'同步關心素材','sync_render_contacts':'同步 Render 名單','sync_names':'同步姓名','sync_render_contacts_after_names':'姓名後二次同步'};return m[s]||s;}
+function tStatus(s){if(!s) return '';if(String(s).includes('start')) return '開始執行';if(String(s).startsWith('success')) return '成功';if(String(s).startsWith('failed')) return '失敗';return s;}
+function fmtTS(iso){if(!iso) return '';const d=new Date(iso);if(isNaN(d.getTime())) return iso;return new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(d);}
+function animateNums(){document.querySelectorAll('.num').forEach(el=>{const target=Number(el.dataset.val||0);const suffix=el.dataset.suffix||'';if(Number.isNaN(target)){el.innerText=(el.dataset.val||'')+suffix;return;}el.innerText=`${target}${suffix}`;});}
+
+let __refreshing=false;
+async function refreshAll(){
+  if(__refreshing) return;__refreshing=true;
+  try{
+    const date=q();
+    document.getElementById('authStatus').innerText='已登入';
+    const o=await j(`/api/overview?date=${date}`);
+    document.getElementById('kpiReach').dataset.val=String(o.careSent||0);
+    document.getElementById('kpiReplyRate').dataset.val=String(o.replyRate||0);
+    document.getElementById('kpiRisk').innerText=(o.taskFailures>0)?`警戒（${o.taskFailures}）`:'穩定';
+    updateHealthDots(o.replyRate, o.taskFailures);
+    try{
+      const sv=await j('/api/survey-stats?days=7');
+      document.getElementById('kpiSurvey').dataset.val=String(sv.todayCount||0);
+      const sum7=(sv.trend||[]).reduce((s,x)=>s+Number(x.count||0),0);
+      document.getElementById('kpiSurveyTrend').innerText=`近7日：${sum7}`;
+    }catch{document.getElementById('kpiSurvey').dataset.val='0';document.getElementById('kpiSurveyTrend').innerText='近7日：0';}
+    animateNums();
+    const alerts=await j(`/api/alerts?date=${date}`);const box=document.getElementById('alertBox');
+    const warA=document.getElementById('warAnomalies');
+    if(alerts.length){
+      box.style.display='block';
+      box.innerHTML='<b>⚠️ 今日告警</b><table class="tbl" style="margin-top:8px"><tr><th>等級</th><th>原因</th><th>建議處置</th><th>重試</th></tr>'+alerts.map(a=>`<tr><td>${a.severity}</td><td>${a.reason}</td><td>${a.suggestion}</td><td>${a.step?`<button class='btn' onclick="retryStep('${a.step}')">一鍵重試</button>`:'—'}</td></tr>`).join('')+'</table>';
+      warA.innerHTML=alerts.slice(0,4).map(a=>`• [${a.severity}] ${a.reason}`).join('<br/>');
+    } else {box.style.display='none';box.innerHTML='';warA.innerText='目前無異常';}
+    const t=await j(`/api/today-tasks?date=${date}`);document.getElementById('tasks').innerHTML='<tr><th>時間</th><th>步驟</th><th>狀態</th></tr>'+t.map(x=>`<tr><td>${x.time||''}</td><td>${tStep(x.step)}</td><td>${tStatus(x.status)}</td></tr>`).join('');
+    const c=await j(`/api/today-care?date=${date}`);document.getElementById('care').innerHTML='<tr><th>時間</th><th>姓名</th><th>訊息預覽</th></tr>'+c.map(x=>`<tr><td>${x.time||''}</td><td title="${x.userId||''}">${x.name||x.userId||''}</td><td>${x.messagePreview||''}</td></tr>`).join('');
+    const tr=await j('/api/trends?days=7');const max=Math.max(1,...tr.map(x=>x.sent));
+    const allZero=tr.every(x=>Number(x.sent||0)===0&&Number(x.fail||0)===0);
+    if(allZero){document.getElementById('trendBars').innerHTML='<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--sub2);font-size:13px;border:1px dashed var(--border2);border-radius:10px;">目前尚無趨勢資料</div>';document.getElementById('trendLabels').innerHTML='';}
+    else{
+      const w=640,h=150,pad=14;
+      const pts=tr.map((x,i)=>{const px=pad+(i*(w-pad*2)/(tr.length-1||1));const py=h-pad-(x.sent/max)*(h-pad*2);return {x:px,y:py,v:x.sent,d:x.date.slice(5)};});
+      const smooth=(arr)=>{if(!arr.length)return'';if(arr.length===1)return`M ${arr[0].x},${arr[0].y}`;let p=`M ${arr[0].x},${arr[0].y}`;for(let i=1;i<arr.length;i++){const prev=arr[i-1],cur=arr[i];const mx=(prev.x+cur.x)/2,my=(prev.y+cur.y)/2;p+=` Q ${prev.x},${prev.y} ${mx},${my}`;if(i===arr.length-1)p+=` T ${cur.x},${cur.y}`;}return p;};
+      const d=smooth(pts);const area=`${d} L ${pts[pts.length-1].x},${h-pad} L ${pts[0].x},${h-pad} Z`;
+      document.getElementById('trendBars').innerHTML=`<div class='wave-box'><svg class='wave-svg' viewBox='0 0 ${w} ${h}' preserveAspectRatio='none'><defs><linearGradient id='wg' x1='0' y1='0' x2='1' y2='0'><stop offset='0%' stop-color='#7C3AED'/><stop offset='50%' stop-color='#8B5CF6'/><stop offset='100%' stop-color='#06B6D4'/></linearGradient><linearGradient id='wa' x1='0' y1='0' x2='0' y2='1'><stop offset='0%' stop-color='rgba(124,58,237,0.45)'/><stop offset='60%' stop-color='rgba(124,58,237,0.12)'/><stop offset='100%' stop-color='rgba(124,58,237,0)'/></linearGradient><filter id='glow'><feGaussianBlur stdDeviation='3' result='blur'/><feMerge><feMergeNode in='blur'/><feMergeNode in='SourceGraphic'/></feMerge></filter></defs><path d='${area}' fill='url(#wa)'/><path d='${d}' fill='none' stroke='url(#wg)' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round' filter='url(#glow)'/></svg></div>`;
+      document.getElementById('trendLabels').innerHTML=tr.map(x=>`<div>${x.date.slice(5)}<br/><b style='color:var(--text2)'>${x.sent}</b><br/><span style='font-size:11px;color:var(--red)'>失敗:${x.fail||0}</span></div>`).join('');
+    }
+    const top=await j(`/api/top-responders?date=${date}`);document.getElementById('topResponders').innerHTML='<tr><th>姓名</th><th>今日互動標記</th><th>最後互動</th></tr>'+top.slice(0,8).map(x=>`<tr><td>${x.name||x.userId}</td><td>${x.activeOnDate?'✅':'—'}</td><td>${fmtTS(x.last_contact_at)}</td></tr>`).join('');
+    await Promise.all([loadRules(),loadAb(),loadSchedule(),loadGlobalManual(),loadPresets(),loadSegments(),loadMsgItems()]);
+    if(!document.getElementById('dryRunTbl').innerHTML.trim()) await runDryRun();
+  }catch(e){
+    document.getElementById('authStatus').innerText='連線暫時失敗（保留上一畫面）';
+    console.warn('refreshAll failed:', e?.message || e);
+  } finally {__refreshing=false;}
+}
+
+let careMediaPath='',careMediaType='',careMediaPreviewUrl='',careFlexJson='';
+
+function validateMediaInput(){
+  const msgEl=document.getElementById('mediaValidationMsg');
+  if(!msgEl) return {ok:true};
+  msgEl.style.color='var(--red)';msgEl.innerText='';
+  const previewRow=document.getElementById('videoPreviewRow');if(previewRow) previewRow.style.display='none';
+  const directMedia=String(document.getElementById('careMediaUrl')?.value||'').trim();
+  let media=String(careMediaPath||'').trim(),mediaType=careMediaType;
+  if(directMedia){media=directMedia;mediaType=/\.mp4(\?|$)/i.test(directMedia)?'video':'image';}
+  if(!media) return {ok:true};
+  const preview=String(document.getElementById('careVideoPreviewUrl')?.value||careMediaPreviewUrl||'').trim();
+  if(/^<iframe/i.test(media)){msgEl.innerText='格式錯誤：請貼「網址」不是 iframe 程式碼';return {ok:false};}
+  if(!media.startsWith('/uploads/')&&!/^https:\/\//i.test(media)){msgEl.innerText='格式錯誤：媒體網址必須是公開 https 連結';return {ok:false};}
+  if(mediaType==='video'){
+    if(previewRow) previewRow.style.display='flex';
+    if(/youtube\.com|youtu\.be/i.test(media)){msgEl.innerText='格式錯誤：LINE 不接受 YouTube 連結';return {ok:false};}
+    if(!/\.mp4(\?|$)/i.test(media)){msgEl.innerText='格式錯誤：影片網址需為 mp4 直連';return {ok:false};}
+    if(!/^https:\/\//i.test(preview)){msgEl.innerText='格式錯誤：影片封面圖需為 https 圖片網址';return {ok:false};}
+  }
+  msgEl.style.color='var(--emerald)';msgEl.innerText='格式檢查通過 ✓';
+  return {ok:true,preview,media,mediaType};
+}
+
+function resetCareComposer(){
+  careMediaPath='';careMediaType='';careMediaPreviewUrl='';careFlexJson='';
+  ['careMediaUrl','careVideoPreviewUrl','testUserId'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
+  const fileEl=document.getElementById('careMediaFile');if(fileEl) fileEl.value='';
+  const hint=document.getElementById('careMediaHint');if(hint) hint.innerText='';
+  const previewRow=document.getElementById('videoPreviewRow');if(previewRow) previewRow.style.display='none';
+  const mediaMsg=document.getElementById('mediaValidationMsg');if(mediaMsg) mediaMsg.innerText='';
+  validateMediaInput();
+}
+
+async function runCareNow(){
+  const ok=await showConfirm('立即定聯','確定要立即執行「定聯發送」？','🚀 確認發送');
+  if(!ok) return;
+  const tpl=document.getElementById('careTemplateSelect')?.value||'';
+  const msg=document.getElementById('careMessageSelect')?.value||'';
+  const previewInput=(document.getElementById('careVideoPreviewUrl')?.value||'').trim();
+  const valid=validateMediaInput();if(!valid.ok){showToast('⚠️ '+document.getElementById('mediaValidationMsg')?.innerText,'err');return;}
+  const finalPreview=previewInput||careMediaPreviewUrl;
+  const finalMediaPath=valid.media||careMediaPath;
+  const finalMediaType=valid.mediaType||careMediaType;
+  if(finalMediaType==='video'&&!finalPreview){showToast('⚠️ 發送影片需要封面圖網址（https）','err');return;}
+  showToast('⏳ 發送中…','',8000);
+  try{
+    const rs=await j('/api/actions/run-care',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:'RUN',template:tpl,message:msg,mediaPath:finalMediaPath,mediaType:finalMediaType,mediaPreviewUrl:finalPreview,flexJson:careFlexJson})});
+    if(rs.ok){
+      showToast('✅ 發送完成！\n'+( rs.output||'').split('\n').slice(0,2).join('\n'),'ok',5000);
+      await refreshAll(); resetCareComposer();
+    } else {
+      showToast('❌ 發送失敗\n'+(rs.error||'請檢查 LINE Token'),'err',6000);
+    }
+  }catch(e){
+    showToast('❌ 連線失敗：'+e.message,'err',5000);
+  }
+}
+
+async function uploadCareMedia(){
+  const f=document.getElementById('careMediaFile')?.files?.[0];
+  if(!f) return showToast('請先選擇附件檔案','err');
+  const b64=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]||'');r.onerror=reject;r.readAsDataURL(f);});
+  const rs=await j('/api/upload-care-media',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:f.name,contentType:f.type,base64:b64})});
+  if(rs.ok){
+    careMediaType=rs.mediaType;careMediaPreviewUrl='';
+    if(rs.publicUrl){
+      careMediaPath=rs.publicUrl;careMediaPreviewUrl=rs.publicUrl;
+      document.getElementById('careMediaHint').innerText=`✅ 已上傳並取得公開網址：${f.name}（${careMediaType}）`;
+    } else {
+      careMediaPath=rs.path;
+      if(careMediaType==='image') careMediaPreviewUrl=(rs.path||'').startsWith('http')?rs.path:'';
+      document.getElementById('careMediaHint').innerText=`⚠️ 已上傳至本機（需設定 IMGBB_API_KEY）：${f.name}（${careMediaType}）`;
+    }
+    if(careMediaType==='video'&&!document.getElementById('careVideoPreviewUrl').value){
+      document.getElementById('careVideoPreviewUrl').placeholder='請貼上影片封面圖 https://...';
+    }
+    validateMediaInput();
+  }
+}
+
+async function sendMediaTestToSingleUser(){
+  const userId=(document.getElementById('testUserId')?.value||'').trim();
+  if(!/^U[0-9a-f]{32}$/i.test(userId)) return showToast('請輸入正確的 userId（U開頭32碼）','err');
+  const valid=validateMediaInput();
+  if(!valid.ok){const msgEl=document.getElementById('mediaValidationMsg');return showToast('⚠️ '+(msgEl?.innerText||'媒體格式有誤'),'err');}
+  const previewInput=(document.getElementById('careVideoPreviewUrl')?.value||'').trim();
+  const finalPreview=previewInput||careMediaPreviewUrl;
+  const finalMediaPath=valid.media||careMediaPath;
+  const finalMediaType=valid.mediaType||careMediaType;
+  const msg=(document.getElementById('careMessageSelect')?.value||'').trim()||'這是一則測試訊息';
+  const payload={userId,message:msg};
+  if(finalMediaPath){payload.mediaPath=finalMediaPath;payload.mediaType=finalMediaType;if(finalPreview) payload.mediaPreviewUrl=finalPreview;}
+  const rs=await j('/api/actions/test-send-media',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  if(rs.ok) showToast('✅ 測試發送成功','ok'); else showToast('❌ 測試發送失敗：'+(rs.error||'unknown'),'err');
+}
+
+async function loadCareTemplates(){
+  const sel=document.getElementById('careTemplateSelect');if(!sel) return;
+  const prevTpl=sel.value; // 保留目前選擇，避免刷新後被重置
+  const rs=await j('/api/care-templates');
+  const nameMap={daily_weather:'天氣關懷',work_support:'工作支持',life_care:'生活關心',light_fun:'輕鬆互動',warm_listen:'溫暖傾聽'};
+  sel.innerHTML=['<option value="">全部模板</option>'].concat((rs.templates||[]).map(t=>`<option value="${t}">${nameMap[t]||t}</option>`)).join('');
+  if(prevTpl) sel.value=prevTpl; // 還原之前的選擇
+  await loadCareMessages();
+}
+
+async function loadCareMessages(){
+  const tpl=document.getElementById('careTemplateSelect')?.value||'';
+  const sel=document.getElementById('careMessageSelect');if(!sel) return;
+  const prevMsg=sel.value; // 保留目前訊息選擇
+  const nameMap={daily_weather:'天氣關懷',work_support:'工作支持',life_care:'生活關心',light_fun:'輕鬆互動',warm_listen:'溫暖傾聽'};
+  if(tpl){
+    const rs=await j(`/api/care-template-messages?template=${encodeURIComponent(tpl)}`);
+    sel.innerHTML=['<option value="">(使用模板隨機一則)</option>'].concat((rs.messages||[]).map(m=>`<option value="${String(m).replace(/"/g,'&quot;')}">${m}</option>`)).join('');
+    if(prevMsg) sel.value=prevMsg; // 還原訊息選擇
+    return;
+  }
+  const t=await j('/api/care-templates');let html='<option value="">(使用模板隨機一則)</option>';
+  for(const key of (t.templates||[])){
+    const rs=await j(`/api/care-template-messages?template=${encodeURIComponent(key)}`);
+    html+=`<optgroup label="${nameMap[key]||key}">`+(rs.messages||[]).map(m=>`<option value="${String(m).replace(/"/g,'&quot;')}">${m}</option>`).join('')+'</optgroup>';
+  }
+  sel.innerHTML=html;
+  if(prevMsg) sel.value=prevMsg; // 還原訊息選擇
+}
+async function retryStep(step){const rs=await j('/api/actions/retry-step',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step})});showToast(rs.ok?`重試成功：${step}`:`重試失敗：${rs.error||''}`);await refreshAll();}
+async function syncNow(){
+  const rs=await j('/api/actions/sync-contacts',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  const now=new Date().toLocaleString('zh-TW',{hour12:false});
+  if(rs.ok){
+    document.getElementById('lastSyncAt').innerText=`最後同步：${now}`;
+    _refreshCountdown=60; // 手動同步後重置倒數
+    showToast(`✅ 同步完成`+(rs.output?'\n'+rs.output:''),'ok',5000);
+    await refreshAll();setTimeout(()=>refreshAll(),800);
+  } else showToast(`❌ 同步失敗\n${rs.error||''}`,'err',5000);
+}
+function exportCSV(){window.open(`/api/export/today.csv?date=${q()}&token=${encodeURIComponent(token())}`,'_blank');}
+async function genReport(){const rs=await j('/api/report/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:q()})});if(rs.ok) showToast('✅ 報告已生成：'+rs.path,'ok',5000);}
+async function toggleManual(userId,manual){const rs=await j('/api/contacts/manual-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,manual})});if(rs.ok){await loadContacts();showToast(manual?'✅ 已切換手動聊天':'✅ 已恢復自動回覆','ok');}}
+async function showTimeline(userId){const rs=await j(`/api/user-timeline?userId=${encodeURIComponent(userId)}`);const box=document.getElementById('timelineBox');const user=rs.user||{};const events=rs.events||[];box.innerHTML=`<b>${user.name||user.userId||userId}</b><table class='tbl' style='margin-top:8px'><tr><th>時間</th><th>事件</th><th>內容</th></tr>${events.map(e=>`<tr><td>${fmtTS(e.at)}</td><td>${e.title||e.type}</td><td>${e.detail||''}</td></tr>`).join('')}</table>`;}
+async function loadContacts(){const list=await j('/api/contacts');document.getElementById('contacts').innerHTML='<table class="tbl"><tr><th>UserId</th><th>姓名</th><th>enabled</th><th>手動聊天</th><th>操作</th><th>last_contact_at</th><th>時間軸</th></tr>'+list.map(x=>`<tr><td>${x.userId||''}</td><td>${x.name||''}</td><td>${x.enabled}</td><td>${x.manual_mode?'✅':'—'}</td><td>${x.manual_mode?`<button class='btn' onclick="toggleManual('${x.userId}',false)">結束手動</button>`:`<button class='btn warn' onclick="toggleManual('${x.userId}',true)">使用手動</button>`}</td><td>${x.last_contact_at||''}</td><td><button class='btn' onclick="showTimeline('${x.userId}')">時間軸</button></td></tr>`).join('')+'</table>'}
+async function selectQuadrant(q){
+  const rs=await j(`/api/quadrant-targets?q=${encodeURIComponent(q)}`);
+  const hintMap={high_value_high_risk:'高價值高風險：建議優先人工跟進',high_value_stable:'高價值穩定：建議維持關係與深耕',low_value_high_risk:'低價值高風險：建議低成本再喚醒',low_value_stable:'低價值穩定：建議低頻維護'};
+  document.getElementById('quadrantHint').innerText=hintMap[q]||'點選象限可自動篩出名單';
+  const el=document.getElementById('quadrantTargets');
+  el.innerHTML='<tr><th>姓名</th><th>UserId</th><th>最後互動</th></tr>'+(rs.rows||[]).map(r=>`<tr><td>${r.name||''}</td><td>${r.userId}</td><td>${fmtTS(r.last_contact_at)}</td></tr>`).join('');
+}
+async function loadRules(){const rs=await j('/api/rules');document.getElementById('rulesEditor').value=JSON.stringify(rs,null,2);}
+async function saveRules(){try{const parsed=JSON.parse(document.getElementById('rulesEditor').value||'{}');const rs=await j('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(parsed)});showToast(rs.ok?'rules 已儲存':'儲存失敗');await loadRules();}catch(e){showToast('❌ rules JSON 格式錯誤','err');}}
+async function applyRulePreset(mode){const base=await j('/api/rules');const preset={single:{pickCount:1,dailyLimitPerUser:1,minHoursBetweenCare:24,emergencyDailyLimitCap:30,requireEnabled:true},conservative:{pickCount:3,dailyLimitPerUser:1,minHoursBetweenCare:36,emergencyDailyLimitCap:60,requireEnabled:true},balanced:{pickCount:5,dailyLimitPerUser:1,minHoursBetweenCare:24,emergencyDailyLimitCap:120,requireEnabled:true},aggressive:{pickCount:8,dailyLimitPerUser:1,minHoursBetweenCare:12,emergencyDailyLimitCap:200,requireEnabled:true}}[mode]||{};const rs=await j('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...base,...preset})});if(rs.ok){showToast(`✅ 已套用${mode==='single'?'單人定聯':mode==='conservative'?'保守':mode==='balanced'?'平衡':'積極'}版`,'ok');await loadRules();}}
+async function loadAb(){const cfg=await j('/api/ab-test');const qDate=document.getElementById('date')?.value;const stats=await j(`/api/ab-test/stats${qDate?`?date=${encodeURIComponent(qDate)}`:''}`);const txt=cfg.enabled?'✅ 啟用中':'⏸️ 停用中';document.getElementById('abEnabled').innerText=txt;const d=document.getElementById('abEnabledDup');if(d) d.innerText=txt;const aRate=Number(stats.stats?.A?.reply_rate||0);const bRate=Number(stats.stats?.B?.reply_rate||0);document.getElementById('abStats').innerHTML=`<tr><th>Variant</th><th>sent</th><th>replied</th><th>reply_rate</th></tr><tr><td>A</td><td>${stats.stats?.A?.sent||0}</td><td>${stats.stats?.A?.replied||0}</td><td>${(aRate*100).toFixed(1)}%</td></tr><tr><td>B</td><td>${stats.stats?.B?.sent||0}</td><td>${stats.stats?.B?.replied||0}</td><td>${(bRate*100).toFixed(1)}%</td></tr>`;}
+async function setAb(enabled){const curr=await j('/api/ab-test');await j('/api/ab-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...curr,enabled})});await loadAb();}
+async function loadSchedule(){const rs=await j('/api/schedule');if(!rs.ok){document.getElementById('scheduleTbl').innerHTML=`<tr><td>讀取失敗：${rs.error||'unknown'}</td></tr>`;return;}document.getElementById('scheduleTbl').innerHTML='<tr><th>crontab line</th><th>next runs (TW)</th></tr>'+(rs.rows||[]).map(r=>`<tr><td><div class="cronline">${r.line}</div></td><td>${(r.nextRuns||[]).map(x=>x.tw).join('<br/>')||'—'}</td></tr>`).join('');}
+async function loadSegments(){const s=await j('/api/segments');document.getElementById('segSummary').innerText=`全部 ${s.all}｜新客 ${s.new}｜沉默 ${s.silent}｜高價值 ${s.high}`;}
+async function runDryRun(){const segment=document.getElementById('drySegment').value;const rs=await j('/api/dry-run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segment,limit:30})});document.getElementById('dryRunTbl').innerHTML='<tr><th>姓名</th><th>UserId</th><th>最後互動</th><th>操作</th></tr>'+(rs.rows||[]).map(r=>`<tr><td>${r.name||''}</td><td>${r.userId}</td><td>${fmtTS(r.last_contact_at)}</td><td><button class="btn" onclick="open360(\'${r.userId}\')">360</button></td></tr>`).join('');}
+async function open360(userId){const rs=await j(`/api/customer360?userId=${encodeURIComponent(userId)}`);const c=rs.customer||{};showToast(`Customer360\n姓名：${c.name||''}\nID：${c.userId||userId}\n來源：${c.source||''}\n標籤：${c.tags||''}\n分數：${c.value_score||0}\n最後互動：${fmtTS(c.last_contact_at)}`,'',8000);}
+async function loadGlobalManual(){const rs=await j('/api/global-manual-mode');const el=document.getElementById('globalManualState');el.className='status-badge '+(rs.enabled?'status-on':'status-off');el.innerText=rs.enabled?'線上狀態：已全域暫停自動回覆':'線上狀態：自動回覆正常';}
+async function toggleGlobalPause(enabled){if(!enabled){const ok=await showConfirm('恢復自動回覆','確定要恢復自動回覆嗎？','✅ 確認恢復');if(!ok) return;}await j('/api/global-manual-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});await loadGlobalManual();}
+async function saveOaManualLog(){
+  const title=(document.getElementById('oaTitle')?.value||'').trim();
+  const count=Number(document.getElementById('oaCount')?.value||0);
+  const note=(document.getElementById('oaNote')?.value||'').trim();
+  if(!title) return showToast('請填訊息名稱','err');
+  if(!count||count<1) return showToast('請填發送人數','err');
+  const sentAt=new Date().toISOString();
+  const rs=await j('/api/oa-manual-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,count,note,sentAt})});
+  if(rs.ok){
+    document.getElementById('oaLogHint').innerText='已登記 OA 群發';
+    document.getElementById('oaTitle').value='';document.getElementById('oaCount').value='';document.getElementById('oaNote').value='';
+    // 同步儲存到本地群發歷史
+    saveBroadcastHistoryLocal(title,count,note,sentAt);
+    await refreshAll();
+  }
+}
+async function loadPresets(){const rs=await j('/api/layout-presets');const sel=document.getElementById('presetList');if(!sel) return;sel.innerHTML=(rs.files||[]).map(f=>`<option value="${f}">${f}</option>`).join('');}
+async function savePreset(){const name=(document.getElementById('presetName').value||'').trim();if(!name) return showToast('請先輸入快照名稱','err');const rs=await j('/api/layout-presets/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});if(rs.ok){showToast('✅ 已保存：'+rs.file,'ok');await loadPresets();}}
+async function applyPreset(){const file=document.getElementById('presetList').value;if(!file) return;const rs=await j('/api/layout-presets/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});if(rs.ok) showToast('✅ 已套用：'+file+'，請重新整理','ok');}
+
+async function uploadMsgMedia(){
+  const f=document.getElementById('msgMediaFile')?.files?.[0];
+  if(!f) return showToast('請先選擇圖片檔案','err');
+  if(!f.type.startsWith('image/')) return showToast('只支援圖片格式（jpg/png/gif/webp）','err');
+  const hintEl=document.getElementById('msgMediaHint');
+  const iconEl=document.getElementById('msgMediaPreviewIcon');
+  if(hintEl) hintEl.innerText='⏳ 上傳中…';
+  try{
+    const b64=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]||'');r.onerror=reject;r.readAsDataURL(f);});
+    const rs=await j('/api/upload-care-media',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:f.name,contentType:f.type,base64:b64})});
+    if(rs.ok){
+      const url=rs.publicUrl||rs.path||'';
+      document.getElementById('msgMedia').value=url;
+      if(hintEl) hintEl.innerText=rs.publicUrl?`✅ 已上傳：${f.name}`:`⚠️ 已存本機（需設定 IMGBB_API_KEY）：${f.name}`;
+      if(iconEl) iconEl.style.display=rs.publicUrl?'block':'none';
+      showToast('✅ 圖片已上傳，URL 已自動填入','ok');
+    } else {
+      if(hintEl) hintEl.innerText='❌ 上傳失敗：'+(rs.error||'請確認 API 設定');
+      showToast('❌ 上傳失敗','err');
+    }
+  }catch(e){
+    if(hintEl) hintEl.innerText='❌ 連線錯誤：'+e.message;
+    showToast('❌ 上傳失敗：'+e.message,'err');
+  }
+}
+function previewMsgMediaImg(){
+  const url=(document.getElementById('msgMedia')?.value||'').trim();
+  if(!url) return;
+  const w=window.open('','_blank','width=800,height=600');
+  w.document.write(`<html><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="${url}" style="max-width:100%;max-height:100vh;object-fit:contain"/></body></html>`);
+}
+
+let msgItemsCache=[];
+function toggleFlexBuilder(){const t=document.getElementById('msgType').value;document.getElementById('flexBuilder').style.display=(t==='flex_carousel')?'block':'none';}
+function addFlexCard(){
+  const box=document.getElementById('flexCards');
+  const n=box.children.length+1;
+  if(n>12) return showToast('最多 12 格','err');
+  const row=document.createElement('div');
+  row.style.cssText='border:1px solid rgba(139,92,246,0.25);padding:10px;border-radius:10px;margin-bottom:8px;background:var(--card)';
+  row.innerHTML=`
+    <div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px'>
+      <span class='small' style='font-weight:600;color:var(--violet)'>第 ${n} 格</span>
+      <button class='btn btn-danger' style='font-size:11px;padding:3px 10px' onclick='this.closest("div[style*=border]").remove();renumberFlexCards()'>✕ 刪除</button>
+    </div>
+    <div style='display:flex;gap:6px;margin-bottom:6px;align-items:center'>
+      <input placeholder='圖片URL（上傳後自動填入）' class='fx-img' style='flex:1;min-width:0'/>
+      <input type='file' class='fx-img-file' accept='image/*' style='display:none' onchange='uploadFlexCardImg(this)'/>
+      <button class='btn btn-sm' style='flex-shrink:0;font-size:11px' onclick='this.previousElementSibling.click()'>選圖</button>
+    </div>
+    <div class='small fx-img-hint' style='margin-bottom:6px;min-height:14px;color:var(--sub)'></div>
+    <input placeholder='標題' class='fx-title' style='width:100%;margin-bottom:6px'/>
+    <input placeholder='描述' class='fx-text' style='width:100%;margin-bottom:6px'/>
+    <input placeholder='按鈕連結URL' class='fx-url' style='width:100%'/>
+  `;
+  box.appendChild(row);
+}
+function renumberFlexCards(){
+  document.querySelectorAll('#flexCards > div').forEach((row,i)=>{
+    const label=row.querySelector('.small');
+    if(label && label.style.color) label.innerText=`第 ${i+1} 格`;
+  });
+}
+async function uploadFlexCardImg(fileInput){
+  const f=fileInput.files?.[0];
+  if(!f) return;
+  const row=fileInput.closest('div[style*=border]');
+  const imgInput=row?.querySelector('.fx-img');
+  const hint=row?.querySelector('.fx-img-hint');
+  if(hint) hint.innerText='⏳ 上傳中…';
+  try{
+    const b64=await new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]||'');r.onerror=reject;r.readAsDataURL(f);});
+    const rs=await j('/api/upload-care-media',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:f.name,contentType:f.type,base64:b64})});
+    if(rs.ok){
+      const url=rs.publicUrl||rs.path||'';
+      if(imgInput) imgInput.value=url;
+      if(hint) hint.innerText=rs.publicUrl?`✅ ${f.name} 已上傳`:`⚠️ 已存本機：${f.name}`;
+      showToast('✅ 圖片已上傳，URL 已自動填入','ok');
+    } else {
+      if(hint) hint.innerText='❌ 上傳失敗：'+(rs.error||'請確認設定');
+      showToast('❌ 圖片上傳失敗','err');
+    }
+  }catch(e){
+    if(hint) hint.innerText='❌ 連線錯誤：'+e.message;
+    showToast('❌ 上傳失敗：'+e.message,'err');
+  }
+}
+function buildFlexJson(){const rows=[...document.querySelectorAll('#flexCards > div')];if(!rows.length) return showToast('請先新增至少一格','err');const cards=rows.map(r=>({type:'bubble',hero:{type:'image',url:r.querySelector('.fx-img').value,size:'full',aspectMode:'cover',aspectRatio:'20:13'},body:{type:'box',layout:'vertical',contents:[{type:'text',text:r.querySelector('.fx-title').value||'未命名',weight:'bold',size:'lg',wrap:true},{type:'text',text:r.querySelector('.fx-text').value||'',size:'sm',color:'#666666',wrap:true}]},footer:{type:'box',layout:'vertical',spacing:'sm',contents:[{type:'button',style:'primary',action:{type:'uri',label:'查看',uri:r.querySelector('.fx-url').value||'https://line.me'}}]}}));const json={type:'flex',altText:document.getElementById('msgName').value||'最新活動',contents:{type:'carousel',contents:cards}};document.getElementById('msgFlex').value=JSON.stringify(json);showToast(`✅ 已產生 ${cards.length} 格多頁訊息`,'ok');}
+async function loadMsgItems(){const rs=await j('/api/message-items');msgItemsCache=rs.items||[];const sel=document.getElementById('msgItems');sel.innerHTML=msgItemsCache.map(x=>`<option value="${x.id}">${x.category}｜${x.name}</option>`).join('');}
+async function saveMsgItem(){const body={name:document.getElementById('msgName').value,category:document.getElementById('msgCategory').value,type:document.getElementById('msgType').value,text:document.getElementById('msgText').value,mediaUrl:document.getElementById('msgMedia').value,flexJson:document.getElementById('msgFlex').value};const rs=await j('/api/message-items',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(rs.ok){showToast('✅ 已儲存項目','ok');document.getElementById('msgName').value='';document.getElementById('msgCategory').value='';document.getElementById('msgType').value='text';document.getElementById('msgText').value='';document.getElementById('msgMedia').value='';document.getElementById('msgFlex').value='';document.getElementById('flexCards').innerHTML='';toggleFlexBuilder();await loadMsgItems();}}
+function useMsgItem(){const id=document.getElementById('msgItems').value;const item=msgItemsCache.find(x=>x.id===id);if(!item) return;const msgSel=document.getElementById('careMessageSelect');if(msgSel){const v=(item.text||'').replace(/"/g,'&quot;');msgSel.innerHTML=`<option value="${v}">${item.text||''}</option>`;msgSel.value=item.text||'';}careFlexJson=item.flexJson||'';if(item.mediaUrl){careMediaPath=item.mediaUrl;careMediaType='image';}const hint=document.getElementById('careMediaHint');if(hint) hint.innerText=careFlexJson?'已套用多頁訊息（Flex）':(item.mediaUrl?`已套用項目附件：${item.mediaUrl}`:'已套用文字項目');showToast('✅ 已套用到定聯內容，可直接發送','ok');}
+async function deleteMsgItem(){const id=document.getElementById('msgItems').value;if(!id) return;const rs=await j('/api/message-items/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});if(rs.ok){await loadMsgItems();}}
+const drop=document.getElementById('drop');['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.style.background='rgba(124,58,237,0.15)';drop.style.borderColor='var(--violet)';}));['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.style.background='';drop.style.borderColor='';}));drop.addEventListener('drop',async(ev)=>{const f=ev.dataTransfer.files[0];if(!f)return;const txt=await f.text();try{const arr=JSON.parse(txt);const rs=await j('/api/contacts/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(arr)});document.getElementById('importResult').innerText=`匯入完成：新增 ${rs.added}，更新 ${rs.updated}，總數 ${rs.total}`;await refreshAll();}catch(e){document.getElementById('importResult').innerText='匯入失敗：JSON 格式錯誤或未授權';}});
+// ══════════════════════════════════════════════════
+//  ENTERPRISE FEATURES — 備忘錄 / 提醒 / 群發歷史 / 週曆 / 健康燈號
+// ══════════════════════════════════════════════════
+
+// ── 工作備忘錄 ─────────────────────────────────────
+const NOTEPAD_KEY='dashboard_notepad_v1';
+let _notepadTimer=null;
+function onNotepadInput(){
+  if(_notepadTimer) clearTimeout(_notepadTimer);
+  document.getElementById('notepadSaveHint').innerText='輸入中…';
+  _notepadTimer=setTimeout(()=>{
+    localStorage.setItem(NOTEPAD_KEY,document.getElementById('dashboardNotepad').value||'');
+    document.getElementById('notepadSaveHint').innerText='✅ 已自動儲存 '+new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+  },800);
+}
+function initNotepad(){
+  const el=document.getElementById('dashboardNotepad');
+  if(el) el.value=localStorage.getItem(NOTEPAD_KEY)||'';
+}
+
+// ── 快速提醒 ────────────────────────────────────────
+const REMINDERS_KEY='oa_quick_reminders_v1';
+function getReminders(){try{return JSON.parse(localStorage.getItem(REMINDERS_KEY)||'[]');}catch{return[];}}
+function saveReminders(arr){localStorage.setItem(REMINDERS_KEY,JSON.stringify(arr));}
+function addReminder(){
+  const date=document.getElementById('reminderDate')?.value||twDateISO();
+  const text=(document.getElementById('reminderText')?.value||'').trim();
+  if(!text) return showToast('請輸入提醒內容','err');
+  const arr=getReminders();
+  arr.push({id:'r_'+Date.now(),date,text,done:false});
+  saveReminders(arr);
+  document.getElementById('reminderText').value='';
+  renderWeekCalendar();
+  showToast('✅ 提醒已新增','ok');
+}
+function toggleReminderDone(id){
+  const arr=getReminders();
+  const r=arr.find(x=>x.id===id);
+  if(r) r.done=!r.done;
+  saveReminders(arr);
+  renderWeekCalendar();
+}
+function deleteReminder(id){
+  saveReminders(getReminders().filter(x=>x.id!==id));
+  renderWeekCalendar();
+}
+
+// ── 本週行事曆 ──────────────────────────────────────
+function renderWeekCalendar(){
+  const grid=document.getElementById('weekCalGrid');
+  if(!grid) return;
+  const now=new Date();
+  const todayStr=now.toISOString().slice(0,10);
+  // 取得本週一的日期
+  const dow=now.getDay(); // 0=Sun
+  const monday=new Date(now);
+  monday.setDate(now.getDate()-(dow===0?6:dow-1));
+  const dayNames=['一','二','三','四','五','六','日'];
+  const reminders=getReminders();
+  let html='';
+  for(let i=0;i<7;i++){
+    const d=new Date(monday);
+    d.setDate(monday.getDate()+i);
+    const ds=d.toISOString().slice(0,10);
+    const isToday=ds===todayStr;
+    const dayRems=reminders.filter(r=>r.date===ds);
+    html+=`<div class="week-day${isToday?' today':''}">
+      <span class="wd-label">${dayNames[i]}</span>
+      <span class="wd-date" style="${isToday?'color:var(--violet)':''}">${d.getDate()}</span>
+      <div class="wd-reminders">${dayRems.map(r=>`<span class="wd-rem-item${r.done?' done':''}" title="${r.text}" onclick="toggleReminderDone('${r.id}')" oncontextmenu="event.preventDefault();deleteReminder('${r.id}')">${r.text}</span>`).join('')}</div>
+    </div>`;
+  }
+  grid.innerHTML=html;
+  // 預設日期選擇器設為今天
+  const rdEl=document.getElementById('reminderDate');
+  if(rdEl && !rdEl.value) rdEl.value=todayStr;
+}
+
+// ── 群發歷史記錄 ────────────────────────────────────
+const BCAST_HIST_KEY='oa_broadcast_history_v1';
+function getBroadcastHistory(){try{return JSON.parse(localStorage.getItem(BCAST_HIST_KEY)||'[]');}catch{return[];}}
+function saveBroadcastHistoryLocal(title,count,note,sentAt){
+  const arr=getBroadcastHistory();
+  arr.unshift({id:'b_'+Date.now(),title,count:Number(count)||0,note:note||'',sentAt:sentAt||new Date().toISOString()});
+  if(arr.length>200) arr.splice(200);
+  localStorage.setItem(BCAST_HIST_KEY,JSON.stringify(arr));
+  renderBroadcastHistory();
+  updateBcastKpi();
+}
+function clearBroadcastHistory(){
+  if(!confirm('確定清除所有群發歷史記錄？')) return;
+  localStorage.removeItem(BCAST_HIST_KEY);
+  renderBroadcastHistory();
+  updateBcastKpi();
+}
+function renderBroadcastHistory(){
+  const arr=getBroadcastHistory();
+  const listEl=document.getElementById('bcastHistList');
+  const emptyEl=document.getElementById('bcastHistEmpty');
+  if(!listEl) return;
+  if(!arr.length){listEl.innerHTML='';if(emptyEl)emptyEl.style.display='block';return;}
+  if(emptyEl) emptyEl.style.display='none';
+  listEl.innerHTML=arr.slice(0,50).map(x=>{
+    const d=new Date(x.sentAt);
+    const ds=isNaN(d)?x.sentAt:new Intl.DateTimeFormat('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(d);
+    return `<div class="bcast-hist-row"><span class="bh-title" title="${x.note||''}">${x.title}</span><span class="bh-count">+${x.count}</span><span class="bh-date">${ds}</span></div>`;
+  }).join('');
+}
+function updateBcastKpi(){
+  const arr=getBroadcastHistory();
+  const monthStr=new Date().toISOString().slice(0,7);
+  const monthArr=arr.filter(x=>x.sentAt&&x.sentAt.slice(0,7)===monthStr);
+  const monthCount=monthArr.length;
+  const monthReach=monthArr.reduce((s,x)=>s+(Number(x.count)||0),0);
+  const totalCount=arr.length;
+  const totalReach=arr.reduce((s,x)=>s+(Number(x.count)||0),0);
+  // Update summary panel
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.innerText=v.toLocaleString();};
+  set('bsMonthCount',monthCount);set('bsMonthReach',monthReach);set('bsTotalCount',totalCount);set('bsTotalReach',totalReach);
+  // Update KPI cards
+  const kpiEl=document.getElementById('kpiMonthBcast');
+  if(kpiEl){kpiEl.dataset.val=String(monthCount);kpiEl.innerText=String(monthCount);}
+  const subEl=document.getElementById('kpiMonthBcastSub');
+  if(subEl) subEl.innerText=`共觸達 ${monthReach.toLocaleString()} 人`;
+}
+
+// ── OA 健康燈號 ─────────────────────────────────────
+function updateHealthDots(replyRate,taskFailures){
+  const setDot=(id,cls,label)=>{const el=document.getElementById(id);if(!el)return;el.className='health-dot '+cls;el.innerText=label;};
+  const rate=Number(replyRate||0);
+  if(rate>=30) setDot('hdReply','green',`回覆率 ${rate}%`);
+  else if(rate>=10) setDot('hdReply','amber',`回覆率偏低 ${rate}%`);
+  else setDot('hdReply','red',`回覆率 ${rate}% 危險`);
+  const fails=Number(taskFailures||0);
+  if(fails===0) setDot('hdTask','green','任務正常');
+  else if(fails<=2) setDot('hdTask','amber',`${fails} 個任務異常`);
+  else setDot('hdTask','red',`${fails} 個任務失敗`);
+  // KPI health card
+  const kpiH=document.getElementById('kpiHealth');
+  const kpiHS=document.getElementById('kpiHealthSub');
+  if(kpiH){
+    if(fails===0&&rate>=20){kpiH.innerText='✅ 正常';if(kpiHS) kpiHS.innerText=`回覆率 ${rate}% · 無異常`;}
+    else if(fails>0||rate<10){kpiH.innerText='🔴 異常';if(kpiHS) kpiHS.innerText=`${fails>0?fails+'個失敗任務':''}${rate<10?` · 回覆率僅${rate}%`:''}`.trim();}
+    else{kpiH.innerText='🟡 注意';if(kpiHS) kpiHS.innerText=`回覆率 ${rate}%${fails>0?' · '+fails+'個任務異常':''}`;}
+  }
+}
+
+let es=null;function startRealtime(){try{if(es)es.close();}catch{}if(!token())return;es=new EventSource(`/api/stream?token=${encodeURIComponent(token())}`);es.addEventListener('heartbeat',()=>{refreshAll();});es.onerror=()=>{};}
+
+function initMotionPro(){
+  document.querySelectorAll('.card').forEach(card=>{
+    card.addEventListener('mousemove',(e)=>{
+      if(!document.body.classList.contains('mode3d')) return;
+      const r=card.getBoundingClientRect();
+      const rx=((e.clientY-r.top)/r.height-0.5)*-8;
+      const ry=((e.clientX-r.left)/r.width-0.5)*8;
+      card.style.transform=`perspective(900px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) translateY(-3px)`;
+    });
+    card.addEventListener('mouseleave',()=>{card.style.transform='';});
+  });
+  if(window.lottie){
+    lottie.loadAnimation({
+      container:document.getElementById('lottieSpark'),
+      renderer:'svg',loop:true,autoplay:true,
+      path:'https://assets3.lottiefiles.com/packages/lf20_jcikwtux.json'
+    });
+  }
+}
+
+// ── URL token 自動登入（手機書籤用）──
+(function(){
+  const params=new URLSearchParams(location.search);
+  const urlToken=params.get('token');
+  if(urlToken && urlToken.trim()){
+    localStorage.setItem('dashboard_admin_token',urlToken.trim());
+    // 清掉 URL 中的 token（安全考量，避免截圖外洩）
+    params.delete('token');
+    const clean=location.pathname+(params.toString()?'?'+params.toString():'');
+    history.replaceState({},'',clean||location.pathname);
+  }
+})();
+document.getElementById('date').value=twDateISO();document.getElementById('token').value=token();applyThemeVars(localStorage.getItem('dashboard_theme')||'cyan');const layout=localStorage.getItem('dashboard_layout')||'jp-default-20260310';const lp=document.getElementById('layoutPreset');if(lp) lp.value=layout;setLayout(layout);document.getElementById('soundBtn').innerText=`音效：${soundOn?'開':'關'}`;document.getElementById('soundIcon').innerText=soundOn?'🔊':'🔈';const showOn=localStorage.getItem('dashboard_showcase')==='1';document.body.classList.toggle('showcase',showOn);document.getElementById('showBtn').innerText=`展示模式：${showOn?'開':'關'}`;const mode3dOn=localStorage.getItem('dashboard_mode3d')==='1';document.body.classList.toggle('mode3d',mode3dOn);document.getElementById('mode3dBtn').innerText=`3D Pro：${mode3dOn?'開':'關'}`;toggleFlexBuilder();document.addEventListener('click',(e)=>{const b=e.target.closest('.btn');if(!b)return;beep();if(window.gsap){gsap.fromTo(b,{scale:1},{scale:0.95,duration:0.06,yoyo:true,repeat:1,ease:'power2.out'});}});loadCareTemplates();refreshAll();selectQuadrant('high_value_high_risk');startRealtime();initMotionPro();
+initNotepad();renderWeekCalendar();renderBroadcastHistory();updateBcastKpi();
+setInterval(()=>{if(!es||es.readyState===2) startRealtime();},15000);
+// 自動刷新（60s）並顯示倒數
+let _refreshCountdown=60;
+const _countdownEl=document.getElementById('lastSyncAt');
+setInterval(()=>{
+  _refreshCountdown--;
+  if(_refreshCountdown<=0){
+    _refreshCountdown=60;
+    refreshAll();
+  } else {
+    const syncEl=document.getElementById('lastSyncAt');
+    if(syncEl && !syncEl.innerText.startsWith('最後同步：2')){
+      syncEl.innerText=`${_refreshCountdown}s 後自動刷新`;
+    }
+  }
+},1000);
+
+// ── iOS 相容 Toast ────────────────────────────────────────────
+let _toastTimer=null;
+function showToast(msg, type='', duration=3500){
+  const el=document.getElementById('iosToast');
+  if(!el) return;
+  el.className='show '+(type||'');
+  el.innerText=msg;
+  if(_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>{ el.className=''; },duration);
+}
+
+// ── iOS 相容 Confirm（Promise-based）────────────────────────
+let iosConfirmResolve=null;
+function showConfirm(title, msg, okLabel='確認執行'){
+  return new Promise(resolve=>{
+    document.getElementById('iosConfirmTitle').innerText=title;
+    document.getElementById('iosConfirmMsg').innerText=msg||'';
+    document.getElementById('iosConfirmOkBtn').innerText=okLabel;
+    document.getElementById('iosConfirm').className='show';
+    iosConfirmResolve=(val)=>{
+      document.getElementById('iosConfirm').className='';
+      resolve(val);
+    };
+  });
+}
+
+// ── 手機登入 Overlay ──────────────────────────────────────────
+function isMobile(){return window.innerWidth<=768;}
+
+function showMobileLogin(){
+  document.getElementById('mobileLoginOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('mobileLoginInput').focus(),100);
+}
+function hideMobileLogin(){
+  document.getElementById('mobileLoginOverlay').style.display='none';
+}
+function doMobileLogin(){
+  const v=document.getElementById('mobileLoginInput').value.trim();
+  if(!v){document.getElementById('mobileLoginMsg').innerText='請輸入 Token';return;}
+  localStorage.setItem('dashboard_admin_token',v);
+  document.getElementById('token').value=v;
+  hideMobileLogin();
+  document.getElementById('mobileLoginBtn').style.display='none';
+  refreshAll();
+}
+// 手機上若未登入則顯示全屏登入 overlay
+function checkMobileLogin(){
+  if(!isMobile()) return;
+  if(!token()){
+    document.getElementById('mobileLoginBtn').style.display='inline-flex';
+    showMobileLogin();
+  }
+}
+// 在 refreshAll 成功後隱藏登入按鈕
+const _origRefresh=refreshAll;
+refreshAll=async function(){
+  try{ await _origRefresh(); }catch(e){}
+  if(token() && isMobile()){
+    document.getElementById('mobileLoginBtn').style.display='none';
+    hideMobileLogin();
+  }
+};
+window.addEventListener('load',()=>{ setTimeout(checkMobileLogin, 800); });
+</script>
+
+<!-- iOS 相容 Toast -->
+<div id="iosToast"></div>
+
+<!-- iOS 相容 Confirm Sheet -->
+<div id="iosConfirm">
+  <div class="ios-confirm-sheet">
+    <div class="ios-confirm-title" id="iosConfirmTitle"></div>
+    <div class="ios-confirm-msg" id="iosConfirmMsg"></div>
+    <div class="ios-confirm-btns">
+      <button class="ios-confirm-cancel" onclick="iosConfirmResolve(false)">取消</button>
+      <button class="ios-confirm-ok" id="iosConfirmOkBtn" onclick="iosConfirmResolve(true)">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- 手機登入 Overlay -->
+<div id="mobileLoginOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,13,26,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);align-items:center;justify-content:center;padding:24px;">
+  <div style="width:100%;max-width:360px;background:#111827;border:1px solid rgba(124,58,237,0.35);border-radius:24px;padding:32px 24px;display:flex;flex-direction:column;gap:20px;box-shadow:0 0 60px rgba(124,58,237,0.25);">
+    <!-- Logo -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="width:60px;height:60px;background:linear-gradient(135deg,#7C3AED,#06B6D4);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:white;box-shadow:0 4px 24px rgba(124,58,237,0.5);">L</div>
+      <div style="font-size:20px;font-weight:800;background:linear-gradient(135deg,#7C3AED,#06B6D4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">LINE CTRL</div>
+      <div style="font-size:13px;color:#94A3B8;">請輸入 Admin Token 登入</div>
+    </div>
+    <!-- Input -->
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <input id="mobileLoginInput" type="password" placeholder="貼上 Admin Token…"
+        style="background:#0D1530;border:1px solid rgba(124,58,237,0.4);border-radius:12px;padding:14px 16px;font-size:15px;color:#E2E8F0;width:100%;outline:none;-webkit-appearance:none;"
+        onkeydown="if(event.key==='Enter')doMobileLogin()"
+        autocomplete="current-password"/>
+      <div id="mobileLoginMsg" style="font-size:12px;color:#F87171;min-height:16px;text-align:center;"></div>
+    </div>
+    <!-- Button -->
+    <button onclick="doMobileLogin()" style="background:linear-gradient(135deg,#7C3AED,#06B6D4);color:white;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:700;width:100%;box-shadow:0 4px 20px rgba(124,58,237,0.5);cursor:pointer;">
+      登入
+    </button>
+    <!-- Token hint -->
+    <div style="font-size:11px;color:#475569;text-align:center;line-height:1.6;">
+      Token 可在 Mac 終端機輸入以下指令查看：<br>
+      <code style="color:#A78BFA;font-size:11px;">cat ~/line-bot/dashboard/.admin_token</code>
+    </div>
+  </div>
+</div>
+</body>
+</html>

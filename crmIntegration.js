@@ -86,7 +86,10 @@ ${conversationText}`;
     }
   }
 
-  // ② 同步更新 CRM 客戶備忘欄（Route B）
+  // ② 寫入 CRM 互動記錄區塊（Route C — 顯示在 App 互動記錄 UI）
+  await _pushActivityToCrm(finalClientId, summary);
+
+  // ③ 同步更新 CRM 客戶備忘欄（Route B — 保留向下相容）
   if (lead) {
     await _pushSummaryToCrm(lead, summary);
   }
@@ -112,6 +115,39 @@ async function _matchCrmClient(displayName) {
   } catch (err) {
     console.error('CRM API 比對失敗：', err.message);
     return { clientId: null, lead: null };
+  }
+}
+
+// ──────────────────────────────────────────────
+// Route C：把摘要寫入 CRM 互動記錄區塊（新 API）
+// ──────────────────────────────────────────────
+async function _pushActivityToCrm(clientId, summary) {
+  if (!CRM_TOKEN || !clientId) return;
+  try {
+    const res = await fetch(`${CRM_BASE_URL}/api/crm/activities`, {
+      method: 'POST',
+      headers: {
+        'x-admin-token': CRM_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        clientId,
+        activity: {
+          id:      'a_' + Date.now(),
+          type:    '💬 LINE',
+          content: summary,
+          at:      new Date().toISOString(),
+        },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) {
+      console.log(`✅ CRM 互動記錄已寫入 → clientId: ${clientId}`);
+    } else {
+      console.error('CRM 互動記錄寫入失敗：', res.status);
+    }
+  } catch (err) {
+    console.error('CRM 互動記錄寫入錯誤：', err.message);
   }
 }
 

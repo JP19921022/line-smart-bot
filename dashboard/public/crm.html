@@ -1,0 +1,1633 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>雋鋒保經 CRM</title>
+
+<!-- PWA / iOS 主畫面 App 支援 -->
+<link rel="manifest" href="/crm-manifest.json"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="JF CRM"/>
+<link rel="apple-touch-icon" href="/crm-touch-icon.png"/>
+<meta name="theme-color" content="#7C3AED"/>
+<style>
+/* ═══════════════════════════════════════════════════
+   NOVA — 雋鋒保經 CRM
+   深宇宙藍底 × 紫青漸層 × 圓角卡片
+   ═══════════════════════════════════════════════════ */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root{
+  --bg:        #080D1A;
+  --bg2:       #0C1325;
+  --card:      #111827;
+  --card2:     #141E33;
+  --card3:     #1A2544;
+  --border:    rgba(255,255,255,0.07);
+  --border2:   rgba(255,255,255,0.12);
+  --g-main:    linear-gradient(135deg,#7C3AED 0%,#06B6D4 100%);
+  --g-pink:    linear-gradient(135deg,#EC4899 0%,#8B5CF6 100%);
+  --g-red:     linear-gradient(135deg,#EF4444,#DC2626);
+  --violet:    #8B5CF6;
+  --cyan:      #06B6D4;
+  --emerald:   #10B981;
+  --amber:     #F59E0B;
+  --red:       #EF4444;
+  --text:      #F1F5F9;
+  --text2:     #CBD5E1;
+  --sub:       #64748B;
+  --sub2:      #94A3B8;
+  --sh-card:   0 4px 24px rgba(0,0,0,0.4),0 1px 0 rgba(255,255,255,0.05) inset;
+  --sh-btn:    0 4px 20px rgba(124,58,237,0.5);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Inter',-apple-system,'PingFang TC','Noto Sans TC',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  min-height:100dvh;
+  font-size:14px;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+
+/* ── Header ── */
+.app-header{
+  position:sticky;top:0;z-index:100;
+  background:rgba(8,13,26,0.92);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+  padding:env(safe-area-inset-top) 28px 0;
+  min-height:60px;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:16px;
+}
+.header-brand{display:flex;align-items:center;gap:12px}
+.brand-mark{
+  width:36px;height:36px;
+  background:var(--g-main);
+  border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  color:white;font-weight:900;font-size:14px;
+  box-shadow:var(--sh-btn);flex-shrink:0;
+}
+.brand-name{
+  font-size:17px;font-weight:800;letter-spacing:-0.03em;
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.brand-sub{font-size:11px;color:var(--sub2);letter-spacing:0.04em}
+
+/* ── Wrap ── */
+.wrap{max-width:1600px;margin:0 auto;padding:24px 28px 48px}
+
+/* ── Grid ── */
+.main-grid{
+  display:grid;
+  grid-template-columns:360px 1fr;
+  gap:16px;margin-top:16px;
+}
+@media(max-width:1100px){.main-grid,.kanban{grid-template-columns:1fr!important}}
+
+/* ── Panels ── */
+.panel{
+  background:var(--card);
+  border-radius:20px;
+  border:1px solid var(--border);
+  box-shadow:var(--sh-card);
+  padding:22px;
+}
+.panel-title{
+  font-size:11px;font-weight:700;
+  letter-spacing:0.14em;text-transform:uppercase;
+  color:var(--sub2);margin-bottom:18px;
+  display:flex;align-items:center;gap:8px;
+}
+.panel-title::before{
+  content:'';width:18px;height:2px;
+  background:var(--g-main);border-radius:2px;flex-shrink:0;
+}
+
+/* ── Form Fields ── */
+.field-group{margin-bottom:12px}
+.field-label{
+  display:block;font-size:11px;font-weight:600;
+  color:var(--sub2);letter-spacing:0.04em;
+  margin-bottom:5px;
+}
+input,select,textarea{
+  width:100%;
+  background:var(--card2)!important;
+  color:var(--text)!important;
+  border:1px solid var(--border2)!important;
+  border-radius:10px;
+  padding:9px 12px;
+  font-family:inherit;font-size:13px;
+  transition:border-color 0.15s,box-shadow 0.15s;
+  outline:none;
+}
+input:focus,select:focus,textarea:focus{
+  border-color:rgba(139,92,246,0.6)!important;
+  box-shadow:0 0 0 3px rgba(124,58,237,0.15)!important;
+}
+input[type="date"]{color-scheme:dark}
+input[type="checkbox"]{width:auto;margin-right:6px;accent-color:var(--violet)}
+input::placeholder{color:var(--sub)!important}
+textarea{resize:vertical;min-height:72px;font-family:inherit}
+select option{background:var(--card2);color:var(--text)}
+
+/* ── Buttons ── */
+.btn{
+  background:var(--g-main);
+  color:white;border:none;
+  border-radius:10px;
+  padding:9px 16px;
+  font-size:12px;font-weight:600;font-family:inherit;
+  letter-spacing:0.02em;cursor:pointer;
+  transition:all 0.18s;white-space:nowrap;
+  box-shadow:var(--sh-btn);
+  min-height:36px;
+}
+.btn:hover{opacity:0.88;transform:translateY(-1px);box-shadow:0 6px 28px rgba(124,58,237,0.6)}
+.btn:active{transform:translateY(0);opacity:1}
+.btn-ghost{
+  background:var(--card2)!important;
+  color:var(--text2)!important;
+  border:1px solid var(--border2)!important;
+  box-shadow:none!important;
+}
+.btn-ghost:hover{background:var(--card3)!important;transform:translateY(-1px);box-shadow:none!important}
+.btn-sm{padding:5px 12px!important;font-size:11px!important;min-height:28px!important}
+.btn-active{background:var(--violet)!important;box-shadow:0 0 0 2px rgba(139,92,246,.45)!important;}
+.btn-danger{
+  background:var(--g-red)!important;
+  box-shadow:0 4px 16px rgba(239,68,68,0.4)!important;
+}
+.btn-danger:hover{box-shadow:0 6px 24px rgba(239,68,68,0.55)!important}
+
+/* ── Row util ── */
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ── Divider ── */
+hr{border:none;border-top:1px solid var(--border);margin:16px 0}
+
+/* ── Tables ── */
+.tbl{width:100%;border-collapse:collapse;table-layout:auto}
+.tbl th,.tbl td{
+  border-bottom:1px solid var(--border);
+  padding:10px 10px;font-size:12px;
+  vertical-align:top;word-break:break-word;text-align:left;
+}
+.tbl th{
+  background:rgba(255,255,255,0.03);
+  color:var(--sub2);text-transform:uppercase;
+  letter-spacing:0.08em;font-size:11px;font-weight:700;
+  white-space:nowrap;
+}
+.tbl tr:hover td{background:rgba(139,92,246,0.06)}
+
+/* ── Tags / Stage ── */
+.tag{
+  display:inline-block;padding:3px 10px;
+  border-radius:999px;
+  background:rgba(139,92,246,0.18);
+  border:1px solid rgba(139,92,246,0.35);
+  color:#C4B5FD;font-size:11px;font-weight:600;
+}
+
+/* ── Reminder Box ── */
+.warn{color:var(--amber)}
+
+/* ── Small ── */
+.small{font-size:12px;color:var(--sub2)}
+
+/* ── Kanban ── */
+.kanban{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:12px;margin-top:8px;
+}
+.col{
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:16px;padding:14px;
+  min-height:200px;
+}
+.col>b{
+  font-size:12px;font-weight:700;
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  letter-spacing:0.04em;text-transform:uppercase;
+}
+.kcard{
+  background:var(--card);
+  border:1px solid var(--border2);
+  border-radius:12px;padding:12px;
+  margin-top:10px;
+  transition:transform 0.15s;
+}
+.kcard:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,0.3)}
+
+/* ── Details/Summary ── */
+details.panel{padding:0;overflow:hidden}
+details.panel>summary{
+  padding:18px 22px;
+  cursor:pointer;list-style:none;
+  font-weight:700;font-size:13px;letter-spacing:0.04em;
+  color:var(--text2);
+  display:flex;align-items:center;gap:10px;
+  transition:background 0.15s;user-select:none;
+}
+details.panel>summary:hover{background:rgba(255,255,255,0.03)}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::before{
+  content:'›';font-size:20px;font-weight:300;
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  transition:transform 0.2s;display:inline-block;line-height:1;width:14px;flex-shrink:0;
+}
+details[open]>summary::before{transform:rotate(90deg)}
+.collapsible-content{padding:4px 22px 22px}
+
+/* ── Journey panel ── */
+.journey-panel{padding:22px}
+.journey-checks{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px}
+.journey-checks label{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:999px}
+::-webkit-scrollbar-thumb:hover{background:rgba(139,92,246,0.4)}
+
+/* ── Pager buttons ── */
+#pager .btn{padding:4px 10px!important;font-size:11px!important;min-height:28px!important;box-shadow:none!important}
+
+/* ── Birthday box inside panel ── */
+#monthBirthdayBox{
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:12px;padding:14px;
+  margin-top:12px;
+}
+
+/* ── Inner section heads ── */
+.section-head{
+  font-size:10px;font-weight:700;
+  color:var(--violet);letter-spacing:0.16em;
+  text-transform:uppercase;margin:16px 0 10px;
+}
+/* ── iOS Toast & Confirm ── */
+#crmToast{
+  position:fixed;bottom:calc(28px + env(safe-area-inset-bottom));left:50%;
+  transform:translateX(-50%) translateY(20px);
+  background:#1E2A45;border:1px solid rgba(124,58,237,0.4);
+  color:#E2E8F0;padding:12px 20px;border-radius:14px;
+  font-size:14px;font-weight:500;white-space:pre-line;text-align:center;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;
+  z-index:9998;max-width:88vw;line-height:1.5;
+}
+#crmToast.crm-toast-show{opacity:1;transform:translateX(-50%) translateY(0);}
+#crmToast.ok{border-color:rgba(16,185,129,0.5);background:#0D2A1E;}
+#crmToast.err{border-color:rgba(239,68,68,0.5);background:#2A0D0D;}
+#crmConfirm{
+  position:fixed;inset:0;z-index:9997;
+  background:rgba(8,13,26,0.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  display:none;align-items:flex-end;justify-content:center;
+  padding-bottom:env(safe-area-inset-bottom);
+}
+#crmConfirm.crm-confirm-show{display:flex;}
+.crm-confirm-sheet{
+  width:100%;max-width:480px;background:#111827;
+  border-radius:20px 20px 0 0;padding:24px 20px 20px;
+  display:flex;flex-direction:column;gap:14px;
+  border-top:1px solid rgba(124,58,237,0.3);
+}
+.crm-confirm-title{font-size:16px;font-weight:700;color:#E2E8F0;text-align:center;}
+.crm-confirm-msg{font-size:13px;color:#94A3B8;text-align:center;line-height:1.6;}
+.crm-confirm-btns{display:flex;gap:10px;}
+.crm-confirm-btns button{flex:1;padding:14px;border-radius:12px;border:none;font-size:15px;font-weight:700;cursor:pointer;}
+.crm-confirm-ok{background:linear-gradient(135deg,#EF4444,#DC2626);color:white;}
+.crm-confirm-cancel{background:#1E2A45;color:#94A3B8;border:1px solid rgba(255,255,255,0.1)!important;}
+
+/* ── Stats Dashboard ── */
+.stats-grid{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:12px;
+  margin:0 0 20px;
+}
+@media(max-width:900px){.stats-grid{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:560px){.stats-grid{grid-template-columns:repeat(2,1fr);}}
+.stat-card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:16px 18px;
+  display:flex;flex-direction:column;gap:4px;
+  transition:transform .2s,box-shadow .2s;
+}
+.stat-card:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.3);}
+.stat-num{font-size:28px;font-weight:800;line-height:1;}
+.stat-label{font-size:11px;color:var(--sub2);font-weight:500;letter-spacing:.03em;}
+
+/* ── Priority badges ── */
+.pri-high{color:#EF4444;font-weight:700;}
+.pri-mid{color:#F59E0B;font-weight:700;}
+.pri-low{color:#64748B;}
+.pri-normal{color:var(--sub2);}
+
+/* ── Tag chips ── */
+.tag-chip{
+  display:inline-block;
+  background:rgba(139,92,246,0.15);
+  border:1px solid rgba(139,92,246,0.3);
+  color:#A78BFA;
+  border-radius:999px;
+  padding:2px 8px;
+  font-size:10px;
+  font-weight:600;
+  margin:1px 2px;
+  white-space:nowrap;
+}
+
+/* ── Today panel ── */
+.today-row{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;
+  background:var(--card2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  margin-bottom:6px;
+}
+.today-row:hover{border-color:rgba(245,158,11,0.4);}
+.today-name{font-weight:700;font-size:13px;flex:1;}
+.today-date{font-size:11px;color:var(--amber);white-space:nowrap;}
+.today-empty{font-size:13px;color:var(--sub2);padding:12px;text-align:center;display:flex;align-items:center;justify-content:center;}
+
+/* ── Stat card active ── */
+.stat-card.clickable{cursor:pointer;}
+.stat-card.clickable.active{border-color:rgba(139,92,246,0.5);box-shadow:0 0 0 2px rgba(139,92,246,0.2);}
+
+/* ── 雙擊編輯：目前編輯中的行 ── */
+tr.editing-row td{background:rgba(139,92,246,0.08)!important;}
+tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
+.name-cell{cursor:pointer;position:relative;}
+.name-cell:hover{color:var(--violet);}
+.name-cell::after{
+  content:'雙擊編輯';
+  position:absolute;left:0;top:calc(100% + 2px);
+  background:rgba(139,92,246,0.9);color:white;
+  font-size:10px;font-weight:600;padding:2px 7px;
+  border-radius:4px;white-space:nowrap;
+  opacity:0;pointer-events:none;
+  transition:opacity .15s;z-index:10;
+}
+.name-cell:hover::after{opacity:1;}
+
+/* ── Customer Grade badges ── */
+.grade-badge{display:inline-block;padding:2px 9px;border-radius:7px;font-weight:800;font-size:12px;letter-spacing:.04em;}
+.grade-A{background:linear-gradient(135deg,#F59E0B,#D97706);color:#fff;box-shadow:0 2px 8px rgba(245,158,11,0.4);}
+.grade-B{background:linear-gradient(135deg,#8B5CF6,#7C3AED);color:#fff;box-shadow:0 2px 8px rgba(139,92,246,0.4);}
+.grade-C{background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.4);color:#22D3EE;}
+.grade-D{background:rgba(100,116,139,0.15);border:1px solid rgba(100,116,139,0.3);color:#94A3B8;}
+.grade-sel{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px;}
+.grade-sel-btn{
+  flex:1;min-width:52px;padding:8px 4px;border:2px solid var(--border);
+  border-radius:10px;background:var(--card3);color:var(--text2);
+  font-size:13px;font-weight:700;cursor:pointer;text-align:center;
+  transition:all .18s;
+}
+.grade-sel-btn:hover{border-color:rgba(139,92,246,0.4);}
+.grade-sel-btn.active-A{border-color:#D97706;background:rgba(245,158,11,0.12);color:#F59E0B;}
+.grade-sel-btn.active-B{border-color:#7C3AED;background:rgba(139,92,246,0.12);color:#A78BFA;}
+.grade-sel-btn.active-C{border-color:#0891B2;background:rgba(6,182,212,0.1);color:#22D3EE;}
+.grade-sel-btn.active-D{border-color:#475569;background:rgba(100,116,139,0.1);color:#94A3B8;}
+
+/* ── Activity Log Timeline ── */
+.act-panel{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:12px;}
+.act-panel-title{font-size:12px;font-weight:700;color:var(--violet);letter-spacing:.08em;text-transform:uppercase;margin-bottom:12px;}
+.act-timeline{display:flex;flex-direction:column;gap:0;}
+.act-item{display:flex;gap:10px;padding-bottom:12px;position:relative;}
+.act-item:not(:last-child)::before{content:'';position:absolute;left:14px;top:28px;bottom:0;width:1px;background:var(--border2);}
+.act-dot{width:28px;height:28px;border-radius:50%;background:var(--card3);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px;}
+.act-dot.call{border-color:rgba(6,182,212,0.5);background:rgba(6,182,212,0.1);}
+.act-dot.line{border-color:rgba(16,185,129,0.5);background:rgba(16,185,129,0.1);}
+.act-dot.meet{border-color:rgba(139,92,246,0.5);background:rgba(139,92,246,0.1);}
+.act-dot.proposal{border-color:rgba(245,158,11,0.5);background:rgba(245,158,11,0.1);}
+.act-dot.deal{border-color:rgba(16,185,129,0.7);background:rgba(16,185,129,0.15);}
+.act-dot.note{border-color:rgba(100,116,139,0.4);background:rgba(100,116,139,0.1);}
+.act-body{flex:1;min-width:0;}
+.act-header{display:flex;align-items:center;gap:6px;margin-bottom:2px;}
+.act-type{font-size:11px;font-weight:700;color:var(--text2);}
+.act-time{font-size:10px;color:var(--sub2);margin-left:auto;}
+.act-note{font-size:12px;color:var(--sub2);line-height:1.5;word-break:break-all;}
+.act-del{font-size:10px;color:var(--red);cursor:pointer;opacity:.6;}
+.act-del:hover{opacity:1;}
+.act-empty{font-size:12px;color:var(--sub);text-align:center;padding:12px 0;}
+.act-type-btn{
+  display:flex;align-items:center;gap:4px;padding:6px 10px;
+  border:1px solid var(--border2);border-radius:8px;background:var(--card3);
+  font-size:12px;cursor:pointer;transition:all .18s;flex:1;justify-content:center;
+}
+.act-type-btn:hover{border-color:rgba(139,92,246,0.4);}
+.act-type-btn.sel{border-color:rgba(139,92,246,0.6);background:rgba(139,92,246,0.12);color:#C4B5FD;font-weight:700;}
+
+/* ── Broadcast Builder ── */
+.bc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:14px;}
+.bc-section{background:var(--card2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;}
+.bc-section-label{font-size:10px;font-weight:700;color:var(--violet);letter-spacing:.1em;margin-bottom:8px;text-transform:uppercase;}
+.bc-grade-row{display:flex;gap:6px;flex-wrap:wrap;}
+.bc-grade-btn{padding:4px 12px;border-radius:6px;border:1px solid var(--border2);background:var(--card3);font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;}
+.bc-grade-btn.sel-A{border-color:#D97706;background:rgba(245,158,11,0.12);color:#F59E0B;}
+.bc-grade-btn.sel-B{border-color:#7C3AED;background:rgba(139,92,246,0.12);color:#A78BFA;}
+.bc-grade-btn.sel-C{border-color:#0891B2;background:rgba(6,182,212,0.1);color:#22D3EE;}
+.bc-grade-btn.sel-D{border-color:#475569;background:rgba(100,116,139,0.1);color:#94A3B8;}
+.bc-result-bar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--card2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;flex-wrap:wrap;}
+.bc-count{font-size:22px;font-weight:800;background:var(--g-main);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.bc-list-wrap{max-height:280px;overflow-y:auto;}
+
+/* ── Stats grid 6 cards ── */
+.stats-grid{grid-template-columns:repeat(6,1fr)!important;}
+@media(max-width:1100px){.stats-grid{grid-template-columns:repeat(3,1fr)!important;}}
+@media(max-width:600px){.stats-grid{grid-template-columns:repeat(2,1fr)!important;}}
+
+/* ── Tag checkbox panel ── */
+.tag-panel{
+  background:var(--card2);border:1px solid var(--border);
+  border-radius:12px;padding:12px 14px;margin-top:8px;
+  display:none;
+}
+.tag-panel.open{display:block;}
+.tag-cb-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.tag-cb-item{
+  display:flex;align-items:center;gap:4px;
+  padding:5px 12px;border-radius:999px;
+  border:1px solid var(--border2);background:var(--card3);
+  font-size:12px;font-weight:500;cursor:pointer;
+  transition:all .18s;user-select:none;
+}
+.tag-cb-item:hover{border-color:rgba(139,92,246,0.45);}
+.tag-cb-item.sel{
+  background:rgba(139,92,246,0.18);
+  border-color:rgba(139,92,246,0.6);
+  color:#C4B5FD;font-weight:700;
+}
+.tag-cb-remove{color:var(--red);font-size:10px;line-height:1;margin-left:2px;opacity:.7;}
+.tag-cb-remove:hover{opacity:1;}
+.tag-display{min-height:28px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-top:6px;}
+.tag-panel-toggle{
+  background:transparent;border:1px solid var(--border2);
+  color:var(--sub2);border-radius:999px;padding:2px 9px;
+  font-size:11px;cursor:pointer;margin-left:8px;
+  transition:all .15s;
+}
+.tag-panel-toggle:hover{border-color:rgba(139,92,246,0.4);color:var(--violet);}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header">
+  <div class="header-brand">
+    <div class="brand-mark">JF</div>
+    <div>
+      <div class="brand-name">雋鋒保經 CRM</div>
+      <div class="brand-sub">客戶關係管理系統</div>
+    </div>
+  </div>
+  <div class="row" style="gap:10px;align-items:center">
+    <div class="small" id="syncMsg"></div>
+    <button id="crmMobileLoginBtn" style="display:none;background:linear-gradient(135deg,#7C3AED,#06B6D4);color:white;border:none;border-radius:999px;padding:5px 14px;font-size:12px;font-weight:700;cursor:pointer;" onclick="showCrmLogin()">🔑 登入</button>
+    <button class="btn btn-ghost btn-sm" id="backToLineBtn" onclick="location.href=location.origin.replace(':3977','').replace('127.0.0.1',location.hostname)+':3977/'">← LINE 面板</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ── 統計儀表板 ── -->
+  <div class="stats-grid">
+    <div class="stat-card clickable" id="statCardTotal" onclick="clearStatFilter()">
+      <div class="stat-num" id="statTotal" style="background:var(--g-main);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">0</div>
+      <div class="stat-label">📋 總客戶數</div>
+    </div>
+    <div class="stat-card clickable" id="statCardBound" onclick="toggleStatFilter('bound')">
+      <div class="stat-num" id="statBound" style="color:var(--emerald)">0</div>
+      <div class="stat-label">🔗 LINE已綁定</div>
+    </div>
+    <div class="stat-card clickable" id="statCardBirthday" onclick="toggleStatFilter('birthday')">
+      <div class="stat-num" id="statBirthday" style="color:var(--violet)">0</div>
+      <div class="stat-label">🎂 本月壽星</div>
+    </div>
+    <div class="stat-card clickable" id="statCardExpiry" onclick="toggleStatFilter('expiry')">
+      <div class="stat-num" id="statExpiry" style="color:var(--amber)">0</div>
+      <div class="stat-label">📋 本月到期</div>
+    </div>
+    <div class="stat-card clickable" id="statCardOverdue" onclick="toggleStatFilter('overdue')">
+      <div class="stat-num" id="statOverdue" style="color:var(--red)">0</div>
+      <div class="stat-label">⚠️ 逾期回訪</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" id="statPipeline" style="color:var(--amber);font-size:20px">$0</div>
+      <div class="stat-label">💰 管道總保費</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+
+    <!-- Left: Customer Form -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+
+      <!-- Form Panel -->
+      <div class="panel">
+        <div class="panel-title">客戶資料</div>
+        <input id="id" type="hidden"/>
+
+        <div class="field-group">
+          <label class="field-label">姓名</label>
+          <input id="name" placeholder="請輸入客戶姓名"/>
+        </div>
+        <div class="field-group">
+          <label class="field-label">手機</label>
+          <input id="phone" placeholder="09XX-XXX-XXX"/>
+        </div>
+        <div class="row" style="gap:10px">
+          <div class="field-group" style="flex:1">
+            <label class="field-label">LINE ID</label>
+            <input id="lineId" placeholder="LINE userId"/>
+          </div>
+          <div class="field-group" style="flex:1">
+            <label class="field-label">LINE 綁定</label>
+            <select id="lineBound">
+              <option value="yes">✅ 已綁定</option>
+              <option value="no">❌ 未綁定</option>
+            </select>
+          </div>
+        </div>
+        <div class="row" style="gap:10px">
+          <div class="field-group" style="flex:1">
+            <label class="field-label">客戶階段</label>
+            <select id="stage">
+              <option>名單</option><option>接觸中</option>
+              <option>已提案</option><option>成交</option><option>追蹤中</option>
+            </select>
+          </div>
+          <div class="field-group" style="flex:1">
+            <label class="field-label">優先等級</label>
+            <select id="priority">
+              <option value="普通">普通</option>
+              <option value="低">低 ▽</option>
+              <option value="中">中 ◆</option>
+              <option value="高">高 🔥</option>
+            </select>
+          </div>
+        </div>
+        <!-- 客戶分級 A/B/C/D -->
+        <div class="field-group">
+          <label class="field-label">客戶分級</label>
+          <div class="grade-sel">
+            <button type="button" class="grade-sel-btn" id="gradeBtn-A" onclick="setGrade('A')">A 級<br/><span style="font-size:10px;font-weight:400;opacity:.75">頂級客戶</span></button>
+            <button type="button" class="grade-sel-btn" id="gradeBtn-B" onclick="setGrade('B')">B 級<br/><span style="font-size:10px;font-weight:400;opacity:.75">重要客戶</span></button>
+            <button type="button" class="grade-sel-btn" id="gradeBtn-C" onclick="setGrade('C')">C 級<br/><span style="font-size:10px;font-weight:400;opacity:.75">一般客戶</span></button>
+            <button type="button" class="grade-sel-btn" id="gradeBtn-D" onclick="setGrade('D')">D 級<br/><span style="font-size:10px;font-weight:400;opacity:.75">待開發</span></button>
+          </div>
+          <input id="grade" type="hidden" value=""/>
+        </div>
+        <div class="row" style="gap:10px">
+          <div class="field-group" style="flex:1">
+            <label class="field-label">生日</label>
+            <input id="birthday" type="date"/>
+          </div>
+          <div class="field-group" style="flex:1">
+            <label class="field-label">保單到期日</label>
+            <input id="expiryAt" type="date"/>
+          </div>
+        </div>
+        <div class="row" style="gap:10px">
+          <div class="field-group" style="flex:1">
+            <label class="field-label">下次回訪日期</label>
+            <input id="nextFollowAt" type="date"/>
+          </div>
+          <div class="field-group" style="flex:1">
+            <label class="field-label">預計年保費（元）</label>
+            <input id="dealValue" type="number" min="0" placeholder="0"/>
+          </div>
+        </div>
+        <div class="field-group">
+          <label class="field-label">客戶來源</label>
+          <select id="source">
+            <option value="">—</option>
+            <option>轉介紹</option>
+            <option>LINE搜尋</option>
+            <option>活動/展覽</option>
+            <option>既有客戶加購</option>
+            <option>自主開發</option>
+            <option>網路廣告</option>
+            <option>其他</option>
+          </select>
+        </div>
+        <div class="field-group">
+          <label class="field-label">保單重點</label>
+          <textarea id="policy" placeholder="記錄保單內容重點..."></textarea>
+        </div>
+        <div class="field-group">
+          <label class="field-label">備註</label>
+          <textarea id="note" placeholder="其他備註事項..."></textarea>
+        </div>
+        <!-- 標籤菜單 -->
+        <div class="field-group">
+          <label class="field-label">
+            商品標籤
+            <button type="button" class="tag-panel-toggle" id="tagPanelToggleBtn" onclick="toggleTagPanel()">展開 ▾</button>
+          </label>
+          <!-- 已選標籤顯示 -->
+          <div class="tag-display" id="selectedTagsDisplay"><span style="font-size:11px;color:var(--sub2)">尚未選擇標籤</span></div>
+          <!-- 勾選菜單 -->
+          <div class="tag-panel" id="tagPanel">
+            <div class="tag-cb-grid" id="tagCbGrid"></div>
+            <div class="row" style="gap:6px">
+              <input id="newTagInput" type="text" placeholder="新增自訂標籤…" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addCustomTag();}"/>
+              <button type="button" class="btn btn-sm" onclick="addCustomTag()">＋新增</button>
+            </div>
+            <div class="row" style="margin-top:8px;gap:6px">
+              <button type="button" class="btn btn-sm btn-ghost" onclick="clearAllTags()">全部清除</button>
+            </div>
+          </div>
+          <input id="tags" type="hidden" value=""/>
+        </div>
+        <div class="row" style="margin-top:4px">
+          <button class="btn" onclick="saveLead()" style="flex:1">儲存客戶</button>
+          <button class="btn btn-ghost" onclick="resetForm()">清空</button>
+        </div>
+      </div>
+
+      <!-- Sync Panel -->
+      <div class="panel">
+        <div class="panel-title">系統設定</div>
+        <div class="field-group">
+          <label class="field-label">Dashboard Admin Token</label>
+          <input id="adminToken" type="password" placeholder="貼上 admin token"/>
+        </div>
+        <button class="btn" onclick="saveAdminToken()" style="width:100%;margin-bottom:12px">儲存 Token</button>
+
+        <div class="section-head">資料操作</div>
+        <div class="row">
+          <button class="btn" onclick="syncLineContacts()" style="flex:1">同步 LINE 名單</button>
+          <button class="btn btn-ghost" onclick="exportData()">匯出 JSON</button>
+        </div>
+        <div class="field-group" style="margin-top:10px">
+          <label class="field-label">匯入檔案（JSON / CSV / XLSX）</label>
+          <input type="file" id="importFile" accept=".json,.csv,.xlsx,.xls" onchange="importData()" style="background:var(--card3)!important;padding:8px"/>
+        </div>
+
+        <!-- Birthday Box -->
+        <div id="monthBirthdayBox"></div>
+      </div>
+
+      <!-- ── 互動記錄 ── -->
+      <div class="panel act-panel" id="actLogPanel" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="act-panel-title">📝 互動記錄</div>
+          <span id="actCustomerName" style="font-size:12px;color:var(--cyan);font-weight:700"></span>
+        </div>
+        <!-- 新增互動 -->
+        <div style="background:var(--card3);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--sub2);margin-bottom:8px;letter-spacing:.06em">記錄這次互動</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px" id="actTypeBtns">
+            <button type="button" class="act-type-btn sel" data-type="📞 電話" onclick="selectActType(this)">📞 電話</button>
+            <button type="button" class="act-type-btn" data-type="💬 LINE" onclick="selectActType(this)">💬 LINE</button>
+            <button type="button" class="act-type-btn" data-type="👥 見面" onclick="selectActType(this)">👥 見面</button>
+            <button type="button" class="act-type-btn" data-type="📋 提案" onclick="selectActType(this)">📋 提案</button>
+            <button type="button" class="act-type-btn" data-type="✅ 成交" onclick="selectActType(this)">✅ 成交</button>
+            <button type="button" class="act-type-btn" data-type="📝 備忘" onclick="selectActType(this)">📝 備忘</button>
+          </div>
+          <textarea id="actNote" placeholder="記錄內容（例：討論壽險方案，客戶有興趣，下週再跟進）" style="margin-bottom:8px;min-height:64px"></textarea>
+          <button type="button" class="btn" style="width:100%" onclick="addActivity()">＋ 新增記錄</button>
+        </div>
+        <!-- 時間軸 -->
+        <div class="act-timeline" id="actTimeline"><div class="act-empty">尚無互動記錄</div></div>
+      </div>
+
+    </div>
+
+    <!-- Right: Customer List -->
+    <details class="panel" open>
+      <summary>客戶清單</summary>
+      <div class="collapsible-content">
+
+        <!-- Search & Filters -->
+        <div class="row" style="justify-content:space-between;margin-bottom:12px;gap:10px">
+          <input id="q" placeholder="🔍  搜尋姓名 / 手機 / LINE" oninput="render()" style="flex:1;max-width:300px"/>
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <select id="filterStage" onchange="render()" style="width:90px">
+              <option value="">全部階段</option>
+              <option>名單</option><option>接觸中</option>
+              <option>已提案</option><option>成交</option><option>追蹤中</option>
+            </select>
+            <select id="filterGrade" onchange="render()" style="width:80px">
+              <option value="">全部級別</option>
+              <option value="A">A 級 ⭐⭐⭐</option>
+              <option value="B">B 級 ⭐⭐</option>
+              <option value="C">C 級 ⭐</option>
+              <option value="D">D 級</option>
+            </select>
+            <select id="birthdayMonth" style="width:90px">
+              <option value="">全部月份</option>
+              <option value="1">1月</option><option value="2">2月</option>
+              <option value="3">3月</option><option value="4">4月</option>
+              <option value="5">5月</option><option value="6">6月</option>
+              <option value="7">7月</option><option value="8">8月</option>
+              <option value="9">9月</option><option value="10">10月</option>
+              <option value="11">11月</option><option value="12">12月</option>
+            </select>
+            <button class="btn btn-sm" onclick="showBirthdayMonth()">查壽星</button>
+            <button class="btn btn-sm" onclick="setBirthdaySort('asc')">生日 ↑</button>
+            <button class="btn btn-sm" onclick="setBirthdaySort('desc')">生日 ↓</button>
+            <button id="btnBoundFilter" class="btn btn-sm" onclick="setLineBoundFilter()">已綁定 ↓</button>
+            <button id="btnHighPri" class="btn btn-sm" onclick="setHighPriFilter()">🔥 高優先</button>
+            <button class="btn btn-sm btn-ghost" onclick="mergeSelected()">合併選取</button>
+            <button class="btn btn-sm btn-ghost" onclick="exportExcel()">📤 Excel</button>
+            <select id="pageSize" onchange="setPageSize(this.value)" style="width:80px">
+              <option value="15">15筆</option>
+              <option value="30" selected>30筆</option>
+              <option value="50">50筆</option>
+              <option value="80">80筆</option>
+              <option value="100">100筆</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Reminder -->
+        <div class="small warn" id="reminderBox" style="margin-bottom:10px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px"></div>
+
+        <!-- Table -->
+        <div style="overflow-x:auto">
+          <table class="tbl" id="tbl"></table>
+        </div>
+        <div class="row" id="pager" style="margin-top:10px;flex-wrap:wrap;gap:4px"></div>
+
+        <!-- Birthday month table -->
+        <table class="tbl" id="birthdayMonthTbl" style="margin-top:12px"></table>
+      </div>
+    </details>
+
+  </div>
+
+  <!-- Today's Follow-up Panel -->
+  <details class="panel" id="todayPanel" style="margin-top:16px" open>
+    <summary>今日待辦 <span id="todayBadge" style="background:var(--red);color:white;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:8px;display:inline-block;">0</span></summary>
+    <div class="collapsible-content">
+      <div id="todayList"><div class="today-empty">✅ 今日無待辦回訪</div></div>
+    </div>
+  </details>
+
+  <!-- Pipeline Kanban -->
+  <details class="panel" style="margin-top:16px">
+    <summary>Pipeline Kanban</summary>
+    <div class="collapsible-content">
+      <div class="kanban" id="kanban"></div>
+    </div>
+  </details>
+
+  <!-- ── 群發名單建立器 ── -->
+  <details class="panel" style="margin-top:16px">
+    <summary>📣 群發名單建立器</summary>
+    <div class="collapsible-content">
+      <div class="bc-grid">
+        <div class="bc-section">
+          <div class="bc-section-label">客戶分級</div>
+          <div class="bc-grade-row" id="bcGradeRow">
+            <button type="button" class="bc-grade-btn sel-A" data-grade="A" onclick="toggleBcGrade(this)">A 級</button>
+            <button type="button" class="bc-grade-btn sel-B" data-grade="B" onclick="toggleBcGrade(this)">B 級</button>
+            <button type="button" class="bc-grade-btn" data-grade="C" onclick="toggleBcGrade(this)">C 級</button>
+            <button type="button" class="bc-grade-btn" data-grade="D" onclick="toggleBcGrade(this)">D 級</button>
+            <button type="button" class="bc-grade-btn" data-grade="" onclick="toggleBcGrade(this)">未分級</button>
+          </div>
+        </div>
+        <div class="bc-section">
+          <div class="bc-section-label">業務階段</div>
+          <select id="bcStage" onchange="buildBroadcastList()" style="width:100%">
+            <option value="">全部階段</option>
+            <option>名單</option><option>接觸中</option>
+            <option>已提案</option><option>成交</option><option>追蹤中</option>
+          </select>
+        </div>
+        <div class="bc-section">
+          <div class="bc-section-label">LINE 綁定</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="radio" name="bcBound" value="bound" onchange="buildBroadcastList()" checked/> 只要已綁定 LINE</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer"><input type="radio" name="bcBound" value="all" onchange="buildBroadcastList()"/> 全部（含未綁定）</label>
+          </div>
+        </div>
+        <div class="bc-section">
+          <div class="bc-section-label">商品標籤（含任一）</div>
+          <input id="bcTagFilter" type="text" placeholder="例：壽險（空白=全部）" oninput="buildBroadcastList()" style="width:100%"/>
+        </div>
+        <div class="bc-section">
+          <div class="bc-section-label">客戶來源</div>
+          <select id="bcSource" onchange="buildBroadcastList()" style="width:100%">
+            <option value="">全部來源</option>
+            <option>轉介紹</option><option>LINE搜尋</option>
+            <option>活動/展覽</option><option>既有客戶加購</option>
+            <option>自主開發</option><option>網路廣告</option><option>其他</option>
+          </select>
+        </div>
+        <div class="bc-section">
+          <div class="bc-section-label">沉默天數（≥ N 天未互動）</div>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="bcSilentDays" type="number" min="0" placeholder="0=不限" style="flex:1" oninput="buildBroadcastList()"/>
+            <span style="font-size:12px;color:var(--sub2)">天</span>
+          </div>
+        </div>
+      </div>
+      <!-- 結果 -->
+      <div class="bc-result-bar">
+        <div><span class="bc-count" id="bcCount">0</span> <span style="font-size:13px;color:var(--sub2)">位符合</span></div>
+        <button type="button" class="btn btn-sm" onclick="copyBcUserIds()">📋 複製 userId 清單</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="copyBcNames()">複製姓名清單</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="exportBcExcel()">📤 匯出 Excel</button>
+        <span id="bcCopyMsg" style="font-size:11px;color:var(--emerald)"></span>
+      </div>
+      <div class="bc-list-wrap">
+        <table class="tbl" id="bcTable"></table>
+      </div>
+    </div>
+  </details>
+
+  <!-- Journey Automation -->
+  <div class="panel journey-panel" style="margin-top:16px">
+    <div class="panel-title">自動旅程（MVP）</div>
+    <div class="journey-checks">
+      <label><input type="checkbox" id="jBirthday" checked/> 生日前 7 天提醒</label>
+      <label><input type="checkbox" id="jExpiry" checked/> 到期前 30 天提醒</label>
+      <label><input type="checkbox" id="jSilent" checked/> 沉默 30 天喚醒</label>
+    </div>
+    <button class="btn" onclick="runJourneyNow()">立即掃描旅程</button>
+    <div id="journeyResult" class="small" style="margin-top:10px;padding:10px 14px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;display:none"></div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const KEY='junfeng_crm_v2';
+const TOKEN_KEY='junfeng_crm_admin_token';
+let leads=[];
+let birthdaySort='none';
+let showBoundOnly=false;
+let showHighPriOnly=false;
+let statFilter=''; // 'bound'|'birthday'|'expiry'|'overdue'|''
+let currentPage=1;
+let pageSize=30;
+const selectedIds=new Set();
+const stages=['名單','接觸中','已提案','成交','追蹤中'];
+const $=id=>document.getElementById(id);
+// ── 伺服器同步（讓手機與桌面共用資料）──────────────────────────
+function getToken(){return localStorage.getItem(TOKEN_KEY)||localStorage.getItem('dashboard_admin_token')||'';}
+
+async function loadFromServer(){
+  const t=getToken(); if(!t) return null;
+  try{
+    const r=await fetch('/api/crm/data',{headers:{'x-admin-token':t}});
+    if(!r.ok) return null;
+    const d=await r.json();
+    return Array.isArray(d.leads)?d.leads:null;
+  }catch{return null;}
+}
+
+async function persistToServer(){
+  const t=getToken(); if(!t) return;
+  try{
+    await fetch('/api/crm/data',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':t},body:JSON.stringify({leads})});
+  }catch{}
+}
+
+async function load(){
+  $('adminToken').value=getToken();
+
+  // 先從 localStorage 載入（快，立即顯示）
+  const local=JSON.parse(localStorage.getItem(KEY)||'[]');
+  leads=Array.isArray(local)?local:[];
+  render();
+
+  // 再從伺服器載入（同步所有設備的最新資料）
+  const serverLeads=await loadFromServer();
+  if(serverLeads!==null){
+    // 合併：以 id 為 key，取 updatedAt 較新的那筆
+    const merged={};
+    for(const x of leads) if(x.id) merged[x.id]=x;
+    for(const x of serverLeads){
+      if(!x.id) continue;
+      if(!merged[x.id]||new Date(x.updatedAt||0)>=new Date(merged[x.id].updatedAt||0))
+        merged[x.id]=x;
+    }
+    leads=Object.values(merged);
+    // 同步回 localStorage
+    localStorage.setItem(KEY,JSON.stringify(leads));
+    render();
+    $('syncMsg').innerText='✅ 資料已同步';
+    setTimeout(()=>$('syncMsg').innerText='',2500);
+  }
+  // 同步互動記錄（Bot 寫入的記錄合併進來）
+  syncActivitiesFromServer();
+}
+
+function saveAdminToken(){
+  localStorage.setItem(TOKEN_KEY,$('adminToken').value.trim());
+  $('syncMsg').innerText='Token 已儲存';
+  // 儲存 token 後立即從伺服器拉資料
+  load();
+}
+
+function persist(){
+  localStorage.setItem(KEY,JSON.stringify(leads));
+  persistToServer(); // 同步到伺服器（非同步，不擋 UI）
+}
+function resetForm(){$('id').value='';['name','phone','lineId','policy','note','birthday','expiryAt','nextFollowAt','tags','dealValue'].forEach(k=>{if($(k))$(k).value='';});$('stage').value='名單';$('lineBound').value='yes';$('priority').value='普通';if($('source'))$('source').value='';clearGrade();loadTagsFromStr('');const ap=document.getElementById('actLogPanel');if(ap)ap.style.display='none';}
+function saveLead(){
+  syncTagsField();
+  const data={id:$('id').value||('c_'+Date.now()),name:$('name').value.trim(),phone:$('phone').value.trim(),lineId:$('lineId').value.trim(),lineBound:$('lineBound').value,stage:$('stage').value,priority:$('priority').value||'普通',grade:$('grade').value||'',birthday:$('birthday').value||'',expiryAt:$('expiryAt').value||'',nextFollowAt:$('nextFollowAt').value||'',policy:$('policy').value.trim(),note:$('note').value.trim(),tags:$('tags').value.trim(),source:$('source')?$('source').value:'',dealValue:$('dealValue')?$('dealValue').value:'',updatedAt:new Date().toISOString()};
+  if(!data.name) return crmToast('請填姓名','err');
+  const i=leads.findIndex(x=>x.id===data.id); if(i>=0) leads[i]=data; else leads.unshift(data);
+  persist(); render(); resetForm(); crmToast('✅ 已儲存','ok');
+}
+function editLead(id){
+  const x=leads.find(v=>v.id===id); if(!x) return;
+  Object.keys(x).forEach(k=>{ if($(k)) $(k).value=x[k]||''; });
+  if($('priority'))$('priority').value=x.priority||'普通';
+  if($('source'))$('source').value=x.source||'';
+  if($('dealValue'))$('dealValue').value=x.dealValue||'';
+  if(x.grade) setGrade(x.grade); else clearGrade();
+  loadTagsFromStr(x.tags||'');
+  openActPanel(x.id, x.name);
+  render(); // re-render to highlight active row
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function autoSaveSilent(){
+  // 靜默儲存目前表單（不跳提示，只有輕量 toast）
+  syncTagsField();
+  const curId=$('id').value; if(!curId) return;
+  const name=$('name').value.trim(); if(!name) return;
+  const data={id:curId,name,phone:$('phone').value.trim(),lineId:$('lineId').value.trim(),lineBound:$('lineBound').value,stage:$('stage').value,priority:$('priority').value||'普通',grade:$('grade').value||'',birthday:$('birthday').value||'',expiryAt:$('expiryAt').value||'',nextFollowAt:$('nextFollowAt').value||'',policy:$('policy').value.trim(),note:$('note').value.trim(),tags:$('tags').value.trim(),source:$('source')?$('source').value:'',dealValue:$('dealValue')?$('dealValue').value:'',updatedAt:new Date().toISOString()};
+  const i=leads.findIndex(x=>x.id===data.id);
+  if(i>=0) leads[i]=data; else leads.unshift(data);
+  persist();
+  crmToast(`💾 已自動儲存「${name}」`,'ok',1800);
+}
+function quickEdit(id){
+  const curId=$('id').value;
+  if(curId && curId!==id) autoSaveSilent();
+  editLead(id);
+}
+async function delLead(id){const ok=await crmConfirm('刪除客戶','確定要刪除此客戶？此操作無法復原。','🗑️ 確認刪除'); if(!ok) return; leads=leads.filter(x=>x.id!==id); persist(); render(); crmToast('已刪除','ok');}
+function setBirthdaySort(mode){birthdaySort=mode;currentPage=1;render();}
+function setLineBoundFilter(){showBoundOnly=!showBoundOnly;currentPage=1;const btn=document.getElementById('btnBoundFilter');if(btn){btn.classList.toggle('btn-active',showBoundOnly);}render();}
+function setHighPriFilter(){showHighPriOnly=!showHighPriOnly;currentPage=1;const btn=document.getElementById('btnHighPri');if(btn){btn.classList.toggle('btn-active',showHighPriOnly);}render();}
+function toggleStatFilter(key){statFilter=statFilter===key?'':key;currentPage=1;['bound','birthday','expiry','overdue'].forEach(k=>{const c=document.getElementById('statCard'+k.charAt(0).toUpperCase()+k.slice(1));if(c)c.classList.toggle('active',statFilter===k);});render();}
+function clearStatFilter(){statFilter='';currentPage=1;['bound','birthday','expiry','overdue'].forEach(k=>{const c=document.getElementById('statCard'+k.charAt(0).toUpperCase()+k.slice(1));if(c)c.classList.remove('active');});render();}
+function exportExcel(){
+  const keys=['name','phone','lineId','lineBound','grade','stage','priority','source','dealValue','birthday','expiryAt','nextFollowAt','policy','note','tags','updatedAt'];
+  const headers=['姓名','手機','LINE ID','LINE綁定','客戶分級','階段','優先等級','客戶來源','預計年保費','生日','保單到期日','下次回訪','保單重點','備註','標籤','更新時間'];
+  const rows=leads.map(x=>keys.map(k=>x[k]||''));
+  const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+  ws['!cols']=headers.map((_,i)=>({wch:[18,14,28,10,6,8,8,10,12,12,12,12,30,30,20,20][i]||14}));
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'客戶名單');
+  XLSX.writeFile(wb,`雋鋒CRM_${new Date().toISOString().slice(0,10)}.xlsx`);
+  crmToast('✅ Excel 已匯出','ok');
+}
+function setPageSize(v){pageSize=Number(v||30);currentPage=1;render();}
+function setPage(p){currentPage=p;render();}
+function toggleSelect(id,checked){ if(checked) selectedIds.add(id); else selectedIds.delete(id); }
+async function openCustomerFolder(id,name){
+  const token = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('dashboard_admin_token') || '';
+  if(!token) return crmToast('請先儲存 Token','err');
+  const rs = await fetch('/api/crm/open-folder',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':token},body:JSON.stringify({id,name})}).then(r=>r.json());
+  if(rs.ok) $('syncMsg').innerText = `已開啟資料夾：${rs.dir}`;
+}
+async function mergeSelected(){
+  const ids=[...selectedIds];
+  if(ids.length<2) return crmToast('請至少勾選 2 位客戶再合併','err');
+  const picks=leads.filter(x=>ids.includes(x.id));
+  const merged={...picks[0]};
+  for(const p of picks.slice(1)){
+    merged.name = merged.name?.length >= (p.name||'').length ? merged.name : p.name;
+    merged.phone = merged.phone || p.phone;
+    merged.lineId = merged.lineId || p.lineId;
+    merged.lineBound = (merged.lineBound==='yes'||p.lineBound==='yes')?'yes':'no';
+    merged.birthday = merged.birthday || p.birthday;
+    merged.expiryAt = merged.expiryAt || p.expiryAt;
+    merged.nextFollowAt = merged.nextFollowAt || p.nextFollowAt;
+    merged.policy = [merged.policy,p.policy].filter(Boolean).join(' | ');
+    merged.note = [merged.note,p.note].filter(Boolean).join(' | ');
+  }
+  leads = leads.filter(x=>!ids.includes(x.id));
+  merged.id = merged.id || ('m_'+Date.now());
+  merged.updatedAt = new Date().toISOString();
+  leads.unshift(merged);
+  selectedIds.clear();
+  persist(); render(); crmToast('✅ 合併完成','ok');
+}
+function mdKey(dateStr){if(!dateStr) return 9999; const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr); if(!m) return 9999; return Number(m[2])*100+Number(m[3]);}
+function showBirthdayMonth(){
+  const m=Number(document.getElementById('birthdayMonth').value||0);
+  if(!m){document.getElementById('birthdayMonthTbl').innerHTML='';return;}
+  const list=leads.filter(x=>x.birthday&&Number(x.birthday.slice(5,7))===m).sort((a,b)=>Number(a.birthday.slice(8,10))-Number(b.birthday.slice(8,10)));
+  document.getElementById('birthdayMonthTbl').innerHTML='<tr><th colspan="4" style="color:var(--violet)">'+m+' 月壽星（'+list.length+' 位）</th></tr><tr><th>姓名</th><th>生日</th><th>手機</th><th>LINE</th></tr>'+list.map(x=>`<tr><td>${x.name}</td><td>${x.birthday}</td><td>${x.phone||''}</td><td>${x.lineId||''}</td></tr>`).join('');
+}
+function priClass(p){if(p==='高') return 'pri-high'; if(p==='中') return 'pri-mid'; if(p==='低') return 'pri-low'; return 'pri-normal';}
+function priLabel(p){if(p==='高') return '🔥高'; if(p==='中') return '◆中'; if(p==='低') return '▽低'; return '—';}
+function renderTags(t){if(!t) return ''; return t.split(',').map(s=>s.trim()).filter(Boolean).map(s=>`<span class="tag-chip">${s}</span>`).join('');}
+function render(){
+  const q=($('q').value||'').toLowerCase();
+  const now = new Date();
+  const today = now.toISOString().slice(0,10);
+  const thisMonth = now.getMonth()+1;
+
+  // ── Stats (always from full list) ──
+  const boundCount = leads.filter(x=>x.lineBound==='yes'&&x.lineId).length;
+  const birthdayCount = leads.filter(x=>x.birthday&&Number(x.birthday.slice(5,7))===thisMonth).length;
+  const expiryCount = leads.filter(x=>x.expiryAt&&x.expiryAt.slice(0,7)===now.toISOString().slice(0,7)).length;
+  const overdueCount = leads.filter(x=>x.nextFollowAt&&x.nextFollowAt<=today).length;
+  if($('statTotal'))$('statTotal').innerText=leads.length;
+  if($('statBound'))$('statBound').innerText=boundCount;
+  if($('statBirthday'))$('statBirthday').innerText=birthdayCount;
+  if($('statExpiry'))$('statExpiry').innerText=expiryCount;
+  if($('statOverdue'))$('statOverdue').innerText=overdueCount;
+  const pipelineTotal = leads.reduce((sum,x)=>sum+(Number(x.dealValue)||0),0);
+  if($('statPipeline'))$('statPipeline').innerText='$'+(pipelineTotal>=10000?Math.round(pipelineTotal/10000)+'萬':pipelineTotal.toLocaleString());
+
+  // ── Today's panel ──
+  const in7 = new Date(now); in7.setDate(in7.getDate()+7);
+  const in7str = in7.toISOString().slice(0,10);
+  const overdueLeads = leads.filter(x=>x.nextFollowAt && x.nextFollowAt<today).sort((a,b)=>a.nextFollowAt.localeCompare(b.nextFollowAt));
+  const todayLeads   = leads.filter(x=>x.nextFollowAt && x.nextFollowAt===today);
+  const upcomingLeads= leads.filter(x=>x.nextFollowAt && x.nextFollowAt>today && x.nextFollowAt<=in7str).sort((a,b)=>a.nextFollowAt.localeCompare(b.nextFollowAt));
+  const urgentCount  = overdueLeads.length + todayLeads.length;
+  const badge=$('todayBadge');
+  if(badge){
+    badge.innerText = urgentCount || '';
+    badge.style.display = urgentCount ? 'inline-block' : 'none';
+  }
+  const tl=$('todayList');
+  if(tl){
+    const rowHtml=(x,label,labelColor)=>`<div class="today-row"><div class="today-name">${x.name}<span style="font-size:11px;color:var(--sub2);font-weight:400;margin-left:6px">${x.phone||''}</span></div><span class="tag" style="font-size:10px">${x.stage}</span>${x.grade?`<span class="grade-badge grade-${x.grade}" style="font-size:10px">${x.grade}</span>`:''}<div class="today-date" style="color:${labelColor}">${label} ${x.nextFollowAt}</div><button class="btn btn-sm" onclick="quickEdit('${x.id}')">編輯</button></div>`;
+    let html='';
+    if(overdueLeads.length){
+      html+=`<div style="font-size:11px;font-weight:700;color:var(--red);letter-spacing:.06em;margin:4px 0 6px">⚠️ 逾期未聯繫（${overdueLeads.length} 位）</div>`;
+      html+=overdueLeads.map(x=>rowHtml(x,'逾期','var(--red)')).join('');
+    }
+    if(todayLeads.length){
+      html+=`<div style="font-size:11px;font-weight:700;color:var(--amber);letter-spacing:.06em;margin:${overdueLeads.length?'12px':' 4px'} 0 6px">📅 今日回訪（${todayLeads.length} 位）</div>`;
+      html+=todayLeads.map(x=>rowHtml(x,'今天','var(--amber)')).join('');
+    }
+    if(upcomingLeads.length){
+      html+=`<div style="font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:.06em;margin:${urgentCount?'12px':'4px'} 0 6px">🗓️ 未來 7 天（${upcomingLeads.length} 位）</div>`;
+      html+=upcomingLeads.map(x=>rowHtml(x,'',`var(--cyan)`)).join('');
+    }
+    if(!html){
+      html=`<div class="today-empty" style="flex-direction:column;gap:6px;padding:20px 12px">
+        <span>✅ 近期無待辦回訪</span>
+        <span style="font-size:11px;color:var(--sub);line-height:1.6">在客戶資料的「下次回訪日期」填入日期後，<br/>到期當天這裡就會出現提醒，讓你不會忘記聯絡客戶。</span>
+      </div>`;
+    }
+    tl.innerHTML=html;
+  }
+
+  // ── Filtering ──
+  let rows=leads.filter(x=>[x.name,x.phone,x.lineId,x.tags||''].join(' ').toLowerCase().includes(q));
+  if(showBoundOnly) rows=rows.filter(x=>x.lineBound==='yes'&&x.lineId);
+  if(showHighPriOnly) rows=rows.filter(x=>x.priority==='高');
+  const stageF=($('filterStage')||{}).value||'';
+  if(stageF) rows=rows.filter(x=>x.stage===stageF);
+  const gradeF=($('filterGrade')||{}).value||'';
+  if(gradeF) rows=rows.filter(x=>x.grade===gradeF);
+  // stat card filter
+  if(statFilter==='bound') rows=rows.filter(x=>x.lineBound==='yes'&&x.lineId);
+  if(statFilter==='birthday') rows=rows.filter(x=>x.birthday&&Number(x.birthday.slice(5,7))===thisMonth);
+  if(statFilter==='expiry') rows=rows.filter(x=>x.expiryAt&&x.expiryAt.slice(0,7)===now.toISOString().slice(0,7));
+  if(statFilter==='overdue') rows=rows.filter(x=>x.nextFollowAt&&x.nextFollowAt<=today);
+
+  if(birthdaySort==='asc') rows=rows.slice().sort((a,b)=>mdKey(a.birthday)-mdKey(b.birthday));
+  if(birthdaySort==='desc') rows=rows.slice().sort((a,b)=>mdKey(b.birthday)-mdKey(a.birthday));
+  const totalPages=Math.max(1,Math.ceil(rows.length/pageSize));
+  if(currentPage>totalPages) currentPage=totalPages;
+  const start=(currentPage-1)*pageSize;
+  const pageRows=rows.slice(start,start+pageSize);
+
+  const _editingId=$('id').value||'';
+  $('tbl').innerHTML='<tr><th>選</th><th>姓名 <span style="font-size:10px;color:var(--sub2);font-weight:400">雙擊編輯</span></th><th>手機</th><th>分級</th><th>標籤</th><th>綁定</th><th>優先</th><th>生日</th><th>到期日</th><th>階段</th><th>回訪日</th><th>更新</th><th>操作</th></tr>'+
+    pageRows.map(x=>{
+      const isEditing=_editingId===x.id;
+      const safeName=(x.name||'').replace(/'/g,"\\'");
+      return `<tr class="${isEditing?'editing-row':''}"><td><input type='checkbox' ${selectedIds.has(x.id)?'checked':''} onchange="toggleSelect('${x.id}',this.checked)" style="width:auto"/></td><td class="name-cell" ondblclick="quickEdit('${x.id}')" style="font-weight:600">${isEditing?'✏️ ':''}<span>${x.name}</span></td><td>${x.phone||''}</td><td>${gradeHtml(x.grade)}</td><td>${renderTags(x.tags)}</td><td>${x.lineBound==='yes'?'<span style="color:var(--emerald)">✅</span>':'<span style="color:var(--sub)">—</span>'}</td><td class="${priClass(x.priority)}" style="font-size:12px;font-weight:700">${priLabel(x.priority)}</td><td>${x.birthday||''}</td><td>${x.expiryAt||''}</td><td><span class="tag">${x.stage}</span></td><td>${x.nextFollowAt||''}</td><td style="font-size:11px;color:var(--sub)">${x.updatedAt?new Date(x.updatedAt).toLocaleString('zh-TW',{hour12:false}):''}</td><td><button class="btn btn-sm btn-ghost" onclick="openCustomerFolder('${x.id}','${safeName}')">資料夾</button> <button class="btn btn-sm btn-danger" onclick="delLead('${x.id}')">刪除</button></td></tr>`;
+    }).join('');
+  $('pager').innerHTML=`<span class='small' style='margin-right:6px'>共 ${rows.length} 筆 第 ${currentPage}/${totalPages} 頁</span>` + Array.from({length:totalPages},(_,i)=>`<button class='btn' onclick='setPage(${i+1})' style='${i+1===currentPage?'outline:2px solid rgba(139,92,246,0.6);':''}'>${i+1}</button>`).join('');
+
+  const unbound = leads.filter(x=>(x.lineBound||'yes')==='no'||!x.lineId);
+  $('reminderBox').innerText = `${overdueCount?`⚠️ 今天/逾期回訪 ${overdueCount} 位。`:'✅ 暫無逾期回訪。'}　未綁定LINE：${unbound.length} 位　本月壽星：${birthdayCount} 位`;
+
+  const m = thisMonth;
+  const monthStars = leads.filter(x=>x.birthday&&Number(String(x.birthday).slice(5,7))===m).sort((a,b)=>Number(a.birthday.slice(8,10))-Number(b.birthday.slice(8,10)));
+  const box = $('monthBirthdayBox');
+  if(box){
+    box.innerHTML = `<div style="font-size:12px;font-weight:700;color:var(--violet);margin-bottom:6px">🎂 ${m} 月壽星（${monthStars.length} 位）</div>` + (monthStars.length? `<div class='small'>` + monthStars.map(x=>`${x.birthday.slice(5)}　${x.name}`).join('<br/>') + `</div>` : `<div class='small'>本月尚無生日資料</div>`);
+  }
+
+  $('kanban').innerHTML=stages.map(s=>{
+    const list=leads.filter(x=>x.stage===s);
+    return `<div class='col'><b>${s}</b> <span class='small' style='color:var(--sub)'>(${list.length})</span>${list.map(x=>`<div class='kcard'><div style='font-weight:600;font-size:13px'>${x.name}</div><div class='small' style='margin-top:3px'>${x.phone||x.lineId||'—'}</div><div class='small' style='color:var(--amber)'>回訪：${x.nextFollowAt||'—'}</div></div>`).join('')}</div>`;
+  }).join('');
+}
+
+async function syncLineContacts(){
+  const token = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('dashboard_admin_token') || '';
+  if(!token) return crmToast('請先貼上 Admin Token 並按「儲存Token」','err');
+  const norm=s=>String(s||'').trim().toLowerCase();
+  const score=(a,c)=>{
+    if(a.lineId && a.lineId===c.userId) return 100;
+    let n=0;
+    const an=norm(a.name), cn=norm(c.name);
+    if(an && cn && an===cn) n+=70;
+    else if(an && cn && (an.includes(cn)||cn.includes(an))) n+=40;
+    return n;
+  };
+  try{
+    const rs = await fetch('/api/contacts-live',{headers:{'x-admin-token':token}});
+    const dataJson = await rs.json();
+    const list = Array.isArray(dataJson) ? dataJson : (Array.isArray(dataJson?.contacts) ? dataJson.contacts : []);
+    if(!Array.isArray(list) || !list.length){
+      $('syncMsg').innerText = `同步失敗：沒有拿到名單（請確認 token 是否正確）`;
+      crmToast('❌ 同步失敗：請確認 Token 正確','err',5000);
+      return;
+    }
+    let add=0,upd=0;
+    for(const c of list){
+      let bestIdx=-1,best=0;
+      leads.forEach((x,i)=>{const s=score(x,c); if(s>best){best=s; bestIdx=i;}});
+      const data={id:c.userId,name:c.name||'未命名',phone:'',lineId:c.userId,lineBound:'yes',stage:'名單',birthday:'',expiryAt:'',nextFollowAt:'',policy:'',note:'',updatedAt:new Date().toISOString()};
+      if(bestIdx>=0 && best>=70){
+        const oldName = leads[bestIdx].name || '';
+        const betterName = (!oldName || oldName==='未命名' || oldName==='新客戶') ? data.name : oldName;
+        leads[bestIdx]={...leads[bestIdx],name:betterName,lineId:data.lineId,lineBound:'yes',updatedAt:data.updatedAt};
+        upd++;
+      } else {
+        leads.push(data); add++;
+      }
+    }
+    persist(); render();
+    const msg=`✅ 同步完成：新增 ${add}、比對綁定 ${upd}`;
+    $('syncMsg').innerText=msg; crmToast(msg,'ok');
+  }catch(e){$('syncMsg').innerText='同步失敗：'+e.message; crmToast('❌ 同步失敗：'+e.message,'err',5000);}
+}
+
+function runJourneyNow(){
+  const today=new Date();
+  const d=(s)=>s?new Date(s):null;
+  const birthdayHits = $('jBirthday').checked ? leads.filter(x=>{if(!x.birthday) return false; const b=d(x.birthday); if(!b) return false; const next=new Date(today.getFullYear(),b.getMonth(),b.getDate()); const diff=Math.ceil((next-today)/86400000); return diff>=0&&diff<=7;}).length : 0;
+  const expiryHits = $('jExpiry').checked ? leads.filter(x=>{if(!x.expiryAt) return false; const diff=Math.ceil((d(x.expiryAt)-today)/86400000); return diff>=0&&diff<=30;}).length : 0;
+  const silentHits = $('jSilent').checked ? leads.filter(x=>{if(!x.updatedAt) return true; const diff=Math.ceil((today-new Date(x.updatedAt))/86400000); return diff>=30;}).length : 0;
+  const el=$('journeyResult');
+  el.style.display='block';
+  el.innerText=`✅ 掃描完成　生日提醒 ${birthdayHits} 人　到期提醒 ${expiryHits} 人　沉默喚醒 ${silentHits} 人`;
+}
+function exportData(){const blob=new Blob([JSON.stringify(leads,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='junfeng_crm_export.json';a.click();}
+async function importData(){
+  const f=$('importFile').files[0]; if(!f) return;
+  const lower=f.name.toLowerCase();
+  let rows=[];
+  if(lower.endsWith('.json')){
+    const text=await f.text();
+    rows=JSON.parse(text);
+  }else if(lower.endsWith('.csv')){
+    const text=await f.text();
+    const [h,...lines]=text.trim().split(/\r?\n/);
+    const cols=h.split(',').map(x=>x.trim().toLowerCase());
+    rows=lines.map(l=>{const v=l.split(',');const o={};cols.forEach((c,i)=>o[c]=v[i]||'');return o;});
+  }else{
+    const buf=await f.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const matrix=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    const keyHints=['姓名','客戶姓名','name','lineid','line id','手機','電話'];
+    let headerIdx=0;
+    for(let i=0;i<Math.min(matrix.length,80);i++){
+      const row=(matrix[i]||[]).map(x=>String(x).toLowerCase());
+      const hit=keyHints.filter(k=>row.some(c=>c.includes(String(k).toLowerCase()))).length;
+      if(hit>=2){ headerIdx=i; break; }
+    }
+    const headers=(matrix[headerIdx]||[]).map(x=>String(x).trim());
+    rows=(matrix.slice(headerIdx+1)||[]).map(r=>{
+      const o={}; headers.forEach((h,idx)=>{o[h]=r[idx]??''}); return o;
+    }).filter(r=>Object.values(r).some(v=>String(v).trim()!==''));
+  }
+  if(!Array.isArray(rows)) return crmToast('格式錯誤：無法解析檔案','err');
+  const get=(r,keys)=>{for(const k of keys){const kk=Object.keys(r).find(x=>String(x).toLowerCase().includes(k.toLowerCase()));if(kk&&r[kk]!==undefined&&r[kk]!==null&&String(r[kk]).trim()!=='')return String(r[kk]).trim();}return '';};
+  const firstText=(r)=>Object.values(r).map(v=>String(v||'').trim()).find(v=>v && !/^\d+$/.test(v) && v.length<=30) || '';
+  const normDate=(v)=>{const s=String(v||'').trim();if(/^\d{8}$/.test(s)) return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;return s;};
+  const mapped=rows.map((r,idx)=>({
+    id:get(r,['id','userid','lineid'])||('imp_'+Date.now()+'_'+idx),
+    name:get(r,['name','姓名','客戶姓名','名稱','中文姓名','姓名(必填)'])||firstText(r)||'未命名',
+    phone:get(r,['phone','手機','電話','手機1','手機號碼']),
+    lineId:get(r,['lineid','line id','line','userid','line-id']),
+    stage:get(r,['stage','階段','成交與否'])||'名單',
+    birthday:normDate(get(r,['birthday','生日','出生日期','birth','birthdate'])),
+    expiryAt:normDate(get(r,['expiry','expiryat','到期日','保單到期日','到期日期'])),
+    nextFollowAt:normDate(get(r,['nextfollowat','回訪日','下次回訪日期','追蹤日期'])),
+    policy:get(r,['policy','保單重點','方案','商品']),
+    note:get(r,['note','備註','註記']),
+    updatedAt:new Date().toISOString()
+  }));
+  const clean = mapped.filter(m=>m.name && !m.name.includes('---') && !m.name.includes('例：') && m.name!=='未命名');
+  for(const m of clean){
+    if(!m.name || m.name==='未命名') continue;
+    const i=leads.findIndex(x=>(m.lineId&&x.lineId===m.lineId)||x.id===m.id||x.name===m.name);
+    if(i>=0) leads[i]={...leads[i],...m}; else leads.push(m);
+  }
+  persist(); render(); crmToast(`✅ 匯入完成：${clean.length} 筆（已自動過濾模板說明列）`,'ok',5000);
+}
+// ── 互動記錄 ──────────────────────────────────────────────────
+const ACT_KEY='junfeng_crm_activities';
+let _actCustomerId='';
+let _actSelectedType='📞 電話';
+
+function getActivities(cid){
+  const all=JSON.parse(localStorage.getItem(ACT_KEY)||'{}');
+  return Array.isArray(all[cid])?all[cid]:[];
+}
+function saveActivities(cid,arr){
+  // 1. 存 localStorage
+  const all=JSON.parse(localStorage.getItem(ACT_KEY)||'{}');
+  all[cid]=arr;
+  localStorage.setItem(ACT_KEY,JSON.stringify(all));
+  // 2. 非同步推送到伺服器（失敗不影響使用）
+  const tok=localStorage.getItem('junfeng_crm_admin_token')||localStorage.getItem('dashboard_admin_token')||'';
+  if(tok) fetch('/api/crm/activities/batch',{method:'POST',headers:{'Content-Type':'application/json','x-admin-token':tok},body:JSON.stringify({clientId:cid,activities:arr})}).catch(()=>{});
+}
+
+// 開啟 App 時從伺服器拉取，合併進 localStorage（Bot 寫入的記錄會自動出現）
+async function syncActivitiesFromServer(){
+  const tok=localStorage.getItem('junfeng_crm_admin_token')||localStorage.getItem('dashboard_admin_token')||'';
+  if(!tok) return;
+  try{
+    const rs=await fetch('/api/crm/activities',{headers:{'x-admin-token':tok}}).then(r=>r.json());
+    if(!rs.ok || !rs.activities) return;
+    const local=JSON.parse(localStorage.getItem(ACT_KEY)||'{}');
+    let merged=false;
+    for(const [cid, serverArr] of Object.entries(rs.activities)){
+      if(!Array.isArray(serverArr)||!serverArr.length) continue;
+      const localArr=Array.isArray(local[cid])?local[cid]:[];
+      const localIds=new Set(localArr.map(a=>a.id));
+      // 把伺服器有但本地沒有的記錄加進來（Bot 新增的）
+      const newOnes=serverArr.filter(a=>!localIds.has(a.id));
+      if(newOnes.length){
+        // note/content 欄位統一：Bot 用 content，手動用 note，渲染時兩者皆支援
+        local[cid]=[...newOnes,...localArr].slice(0,200);
+        merged=true;
+      }
+    }
+    if(merged){
+      localStorage.setItem(ACT_KEY,JSON.stringify(local));
+      // 若目前有客戶面板開著就刷新顯示
+      if(_actCustomerId) renderActTimeline(_actCustomerId);
+    }
+  }catch(e){ /* 網路失敗靜默，不影響本地使用 */ }
+}
+function selectActType(btn){
+  _actSelectedType=btn.dataset.type;
+  document.querySelectorAll('.act-type-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+}
+function openActPanel(cid,name){
+  _actCustomerId=cid;
+  const panel=document.getElementById('actLogPanel');
+  const nameEl=document.getElementById('actCustomerName');
+  if(panel) panel.style.display='block';
+  if(nameEl) nameEl.innerText=name||'';
+  renderActTimeline(cid);
+}
+function renderActTimeline(cid){
+  const box=document.getElementById('actTimeline'); if(!box) return;
+  const acts=getActivities(cid).slice().reverse();
+  if(!acts.length){box.innerHTML='<div class="act-empty">尚無互動記錄<br/><span style="font-size:11px">按上方按鈕新增第一筆</span></div>';return;}
+  const dotClass={'📞 電話':'call','💬 LINE':'line','👥 見面':'meet','📋 提案':'proposal','✅ 成交':'deal','📝 備忘':'note'};
+  box.innerHTML=acts.map(a=>`
+    <div class="act-item">
+      <div class="act-dot ${dotClass[a.type]||'note'}">${(a.type||'').slice(0,2)}</div>
+      <div class="act-body">
+        <div class="act-header">
+          <span class="act-type">${a.type||''}</span>
+          <span class="act-time">${new Date(a.at).toLocaleString('zh-TW',{hour12:false,month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</span>
+          <span class="act-del" onclick="deleteActivity('${cid}','${a.id}')">✕</span>
+        </div>
+        <div class="act-note">${(a.note||a.content||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>')}</div>
+      </div>
+    </div>`).join('');
+}
+function addActivity(){
+  if(!_actCustomerId) return crmToast('請先選擇一位客戶','err');
+  const note=(document.getElementById('actNote')?.value||'').trim();
+  if(!note) return crmToast('請輸入記錄內容','err');
+  const acts=getActivities(_actCustomerId);
+  acts.push({id:'a_'+Date.now(),type:_actSelectedType,note,at:new Date().toISOString()});
+  saveActivities(_actCustomerId,acts);
+  document.getElementById('actNote').value='';
+  renderActTimeline(_actCustomerId);
+  crmToast(`✅ 已記錄「${_actSelectedType}」`,'ok');
+}
+function deleteActivity(cid,aid){
+  const acts=getActivities(cid).filter(a=>a.id!==aid);
+  saveActivities(cid,acts);
+  renderActTimeline(cid);
+}
+
+// ── 群發名單建立器 ────────────────────────────────────────────
+let _bcGrades=new Set(['A','B']);
+let _bcResult=[];
+
+function toggleBcGrade(btn){
+  const g=btn.dataset.grade;
+  if(_bcGrades.has(g)) _bcGrades.delete(g); else _bcGrades.add(g);
+  // update button styles
+  document.querySelectorAll('.bc-grade-btn').forEach(b=>{
+    const bg=b.dataset.grade;
+    b.className='bc-grade-btn'+(_bcGrades.has(bg)?' sel-'+(bg||'D'):'');
+    if(_bcGrades.has(bg)&&!bg) b.className='bc-grade-btn sel-D'; // 未分級用D樣式
+  });
+  buildBroadcastList();
+}
+function buildBroadcastList(){
+  const stage=(document.getElementById('bcStage')||{}).value||'';
+  const boundOnly=(document.querySelector('input[name="bcBound"]:checked')||{}).value==='bound';
+  const tagFilter=((document.getElementById('bcTagFilter')||{}).value||'').trim().toLowerCase();
+  const source=(document.getElementById('bcSource')||{}).value||'';
+  const silentDays=Number((document.getElementById('bcSilentDays')||{}).value||0);
+  const today=new Date().toISOString().slice(0,10);
+
+  _bcResult=leads.filter(x=>{
+    // grade filter
+    const g=x.grade||'';
+    if(_bcGrades.size>0 && !_bcGrades.has(g)) return false;
+    // stage
+    if(stage && x.stage!==stage) return false;
+    // bound
+    if(boundOnly && !(x.lineBound==='yes'&&x.lineId)) return false;
+    // tag
+    if(tagFilter){
+      const xtags=(x.tags||'').toLowerCase();
+      if(!xtags.includes(tagFilter)) return false;
+    }
+    // source
+    if(source && x.source!==source) return false;
+    // silent days
+    if(silentDays>0){
+      const lastUp=x.updatedAt?new Date(x.updatedAt):new Date(0);
+      const diffDays=Math.floor((new Date()-lastUp)/86400000);
+      if(diffDays<silentDays) return false;
+    }
+    return true;
+  });
+
+  const cnt=document.getElementById('bcCount'); if(cnt) cnt.innerText=_bcResult.length;
+  const tbl=document.getElementById('bcTable'); if(!tbl) return;
+  tbl.innerHTML='<tr><th>姓名</th><th>分級</th><th>LINE ID</th><th>階段</th><th>標籤</th><th>來源</th><th>預計保費</th></tr>'+
+    _bcResult.slice(0,100).map(x=>`<tr><td style="font-weight:600">${x.name}</td><td>${gradeHtml(x.grade)}</td><td style="font-size:11px;color:var(--sub2)">${x.lineId||'—'}</td><td><span class="tag">${x.stage}</span></td><td>${renderTags(x.tags)}</td><td style="font-size:11px">${x.source||'—'}</td><td style="color:var(--amber)">${x.dealValue?Number(x.dealValue).toLocaleString()+'元':'—'}</td></tr>`).join('')+
+    (_bcResult.length>100?`<tr><td colspan="7" style="text-align:center;color:var(--sub2);font-size:11px">…還有 ${_bcResult.length-100} 筆（匯出 Excel 可查看全部）</td></tr>`:'');
+}
+function copyBcUserIds(){
+  if(!_bcResult.length) return crmToast('目前沒有符合條件的客戶','err');
+  const ids=_bcResult.filter(x=>x.lineId).map(x=>x.lineId).join('\n');
+  navigator.clipboard.writeText(ids).then(()=>{ document.getElementById('bcCopyMsg').innerText=`✅ 已複製 ${_bcResult.filter(x=>x.lineId).length} 個 userId`; setTimeout(()=>{document.getElementById('bcCopyMsg').innerText='';},3000); }).catch(()=>crmToast('複製失敗，請手動複製','err'));
+}
+function copyBcNames(){
+  if(!_bcResult.length) return crmToast('目前沒有符合條件的客戶','err');
+  const names=_bcResult.map(x=>x.name+(x.phone?` ${x.phone}`:'')).join('\n');
+  navigator.clipboard.writeText(names).then(()=>{ document.getElementById('bcCopyMsg').innerText=`✅ 已複製 ${_bcResult.length} 位姓名`; setTimeout(()=>{document.getElementById('bcCopyMsg').innerText='';},3000); }).catch(()=>crmToast('複製失敗','err'));
+}
+function exportBcExcel(){
+  if(!_bcResult.length) return crmToast('目前沒有符合條件的客戶','err');
+  const keys=['name','phone','lineId','lineBound','grade','stage','source','dealValue','tags','nextFollowAt','note'];
+  const headers=['姓名','手機','LINE ID','LINE綁定','分級','階段','來源','預計保費','標籤','回訪日','備註'];
+  const rows=_bcResult.map(x=>keys.map(k=>x[k]||''));
+  const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'群發名單');
+  XLSX.writeFile(wb,`群發名單_${new Date().toISOString().slice(0,10)}.xlsx`);
+  crmToast('✅ Excel 已匯出','ok');
+}
+
+// ── 客戶分級 A/B/C/D ──────────────────────────────────────────
+function setGrade(g){
+  document.getElementById('grade').value=g;
+  ['A','B','C','D'].forEach(k=>{
+    const btn=document.getElementById('gradeBtn-'+k);
+    if(btn) btn.className='grade-sel-btn'+(k===g?' active-'+k:'');
+  });
+}
+function clearGrade(){
+  document.getElementById('grade').value='';
+  ['A','B','C','D'].forEach(k=>{
+    const btn=document.getElementById('gradeBtn-'+k);
+    if(btn) btn.className='grade-sel-btn';
+  });
+}
+function gradeHtml(g){
+  if(!g) return '<span style="color:var(--sub)">—</span>';
+  return `<span class="grade-badge grade-${g}">${g}</span>`;
+}
+
+// ── 標籤菜單 ──────────────────────────────────────────────────
+const DEFAULT_TAGS=['壽險','產險','儲蓄','投資','重大傷病','長照','失能','實支實付（醫療）','實支實付（意外）'];
+const CUSTOM_TAGS_KEY='junfeng_crm_custom_tags';
+let _tagPanelOpen=false;
+let _selectedTags=new Set();
+
+function getAvailableTags(){
+  const custom=JSON.parse(localStorage.getItem(CUSTOM_TAGS_KEY)||'[]');
+  return [...DEFAULT_TAGS,...custom.filter(t=>!DEFAULT_TAGS.includes(t))];
+}
+function toggleTagPanel(){
+  _tagPanelOpen=!_tagPanelOpen;
+  const panel=document.getElementById('tagPanel');
+  const btn=document.getElementById('tagPanelToggleBtn');
+  if(panel) panel.classList.toggle('open',_tagPanelOpen);
+  if(btn) btn.innerText=_tagPanelOpen?'收起 ▲':'展開 ▾';
+  if(_tagPanelOpen) renderTagCbs();
+}
+function renderTagCbs(){
+  const grid=document.getElementById('tagCbGrid');
+  if(!grid) return;
+  const custom=JSON.parse(localStorage.getItem(CUSTOM_TAGS_KEY)||'[]');
+  const all=getAvailableTags();
+  grid.innerHTML=all.map(t=>{
+    const isSel=_selectedTags.has(t);
+    const isCustom=custom.includes(t);
+    const safe=t.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    return `<div class="tag-cb-item${isSel?' sel':''}" onclick="toggleTag('${safe}')"><span>${t}</span>`
+      +(isCustom?`<span class="tag-cb-remove" onclick="event.stopPropagation();removeCustomTag('${safe}')">✕</span>`:'')
+      +`</div>`;
+  }).join('');
+}
+function toggleTag(tag){
+  if(_selectedTags.has(tag)) _selectedTags.delete(tag); else _selectedTags.add(tag);
+  syncTagsField(); renderTagCbs(); renderSelectedTagsDisplay();
+}
+function syncTagsField(){
+  const el=document.getElementById('tags');
+  if(el) el.value=[..._selectedTags].join(',');
+}
+function renderSelectedTagsDisplay(){
+  const el=document.getElementById('selectedTagsDisplay');
+  if(!el) return;
+  const arr=[..._selectedTags];
+  el.innerHTML=arr.length?arr.map(t=>`<span class="tag-chip">${t}</span>`).join(''):'<span style="font-size:11px;color:var(--sub2)">尚未選擇標籤</span>';
+}
+function addCustomTag(){
+  const input=document.getElementById('newTagInput');
+  if(!input) return;
+  const val=input.value.trim();
+  if(!val) return crmToast('請輸入標籤名稱','err');
+  const custom=JSON.parse(localStorage.getItem(CUSTOM_TAGS_KEY)||'[]');
+  if(!custom.includes(val)&&!DEFAULT_TAGS.includes(val)){
+    custom.push(val);
+    localStorage.setItem(CUSTOM_TAGS_KEY,JSON.stringify(custom));
+  }
+  _selectedTags.add(val);
+  input.value='';
+  syncTagsField(); renderTagCbs(); renderSelectedTagsDisplay();
+  crmToast(`✅ 已新增標籤「${val}」`,'ok');
+}
+function removeCustomTag(tag){
+  const custom=JSON.parse(localStorage.getItem(CUSTOM_TAGS_KEY)||'[]');
+  localStorage.setItem(CUSTOM_TAGS_KEY,JSON.stringify(custom.filter(t=>t!==tag)));
+  _selectedTags.delete(tag);
+  syncTagsField(); renderTagCbs(); renderSelectedTagsDisplay();
+}
+function clearAllTags(){
+  _selectedTags.clear();
+  syncTagsField(); renderTagCbs(); renderSelectedTagsDisplay();
+}
+function loadTagsFromStr(str){
+  _selectedTags.clear();
+  if(str) str.split(',').map(s=>s.trim()).filter(Boolean).forEach(t=>_selectedTags.add(t));
+  syncTagsField();
+  renderSelectedTagsDisplay();
+  if(_tagPanelOpen) renderTagCbs();
+}
+
+// ── iOS 相容 Toast ────────────────────────────────────────────
+let _crmToastTimer=null;
+function crmToast(msg, type='', duration=3500){
+  const el=document.getElementById('crmToast');
+  if(!el) return;
+  el.className='crm-toast-show '+(type||'');
+  el.innerText=msg;
+  if(_crmToastTimer) clearTimeout(_crmToastTimer);
+  _crmToastTimer=setTimeout(()=>{ el.className=''; },duration);
+}
+
+// ── iOS 相容 Confirm（Promise-based）────────────────────────
+let _crmConfirmResolve=null;
+function crmConfirm(title, msg, okLabel='確認'){
+  return new Promise(resolve=>{
+    document.getElementById('crmConfirmTitle').innerText=title;
+    document.getElementById('crmConfirmMsg').innerText=msg||'';
+    document.getElementById('crmConfirmOkBtn').innerText=okLabel;
+    document.getElementById('crmConfirm').className='crm-confirm-show';
+    _crmConfirmResolve=(val)=>{
+      document.getElementById('crmConfirm').className='';
+      resolve(val);
+    };
+  });
+}
+
+// ── URL token 自動登入（必須在 load() 之前執行）──────────────
+(function(){
+  const params=new URLSearchParams(location.search);
+  const urlToken=params.get('token');
+  if(urlToken && urlToken.trim()){
+    localStorage.setItem(TOKEN_KEY, urlToken.trim());
+    localStorage.setItem('dashboard_admin_token', urlToken.trim());
+    history.replaceState({},'',location.pathname);
+  }
+})();
+load();
+
+// ── 手機登入 Overlay ────────────────────────────────────────
+function isCrmMobile(){return window.innerWidth<=768;}
+
+function showCrmLogin(){
+  document.getElementById('crmLoginOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('crmLoginInput').focus(),100);
+}
+function hideCrmLogin(){
+  document.getElementById('crmLoginOverlay').style.display='none';
+}
+function doCrmLogin(){
+  const v=document.getElementById('crmLoginInput').value.trim();
+  if(!v){document.getElementById('crmLoginMsg').innerText='請輸入 Token';return;}
+  localStorage.setItem(TOKEN_KEY, v);
+  localStorage.setItem('dashboard_admin_token', v);
+  document.getElementById('adminToken').value=v;
+  hideCrmLogin();
+  document.getElementById('crmMobileLoginBtn').style.display='none';
+  document.getElementById('syncMsg').innerText='✅ 已登入，同步中…';
+  load(); // 登入後立即從伺服器拉取最新資料
+}
+function checkCrmMobileLogin(){
+  if(!isCrmMobile()) return;
+  const t=localStorage.getItem(TOKEN_KEY)||localStorage.getItem('dashboard_admin_token')||'';
+  if(!t){
+    document.getElementById('crmMobileLoginBtn').style.display='inline-block';
+    showCrmLogin();
+  }
+}
+window.addEventListener('load',()=>{ setTimeout(checkCrmMobileLogin, 600); });
+</script>
+
+<!-- iOS Toast -->
+<div id="crmToast"></div>
+
+<!-- iOS Confirm Sheet -->
+<div id="crmConfirm">
+  <div class="crm-confirm-sheet">
+    <div class="crm-confirm-title" id="crmConfirmTitle"></div>
+    <div class="crm-confirm-msg" id="crmConfirmMsg"></div>
+    <div class="crm-confirm-btns">
+      <button class="crm-confirm-cancel" onclick="_crmConfirmResolve(false)">取消</button>
+      <button class="crm-confirm-ok" id="crmConfirmOkBtn" onclick="_crmConfirmResolve(true)">確認</button>
+    </div>
+  </div>
+</div>
+
+<!-- 手機登入 Overlay -->
+<div id="crmLoginOverlay" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(8,13,26,0.97);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);align-items:center;justify-content:center;padding:24px;">
+  <div style="width:100%;max-width:360px;background:#111827;border:1px solid rgba(124,58,237,0.35);border-radius:24px;padding:32px 24px;display:flex;flex-direction:column;gap:20px;box-shadow:0 0 60px rgba(124,58,237,0.25);">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div style="width:60px;height:60px;background:linear-gradient(135deg,#7C3AED,#06B6D4);border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:white;box-shadow:0 4px 24px rgba(124,58,237,0.5);">JF</div>
+      <div style="font-size:20px;font-weight:800;background:linear-gradient(135deg,#7C3AED,#06B6D4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">雋鋒保經 CRM</div>
+      <div style="font-size:13px;color:#94A3B8;">請輸入 Admin Token 登入</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <input id="crmLoginInput" type="password" placeholder="貼上 Admin Token…"
+        style="background:#0D1530;border:1px solid rgba(124,58,237,0.4);border-radius:12px;padding:14px 16px;font-size:15px;color:#E2E8F0;width:100%;outline:none;-webkit-appearance:none;box-sizing:border-box;"
+        onkeydown="if(event.key==='Enter')doCrmLogin()"
+        autocomplete="current-password"/>
+      <div id="crmLoginMsg" style="font-size:12px;color:#F87171;min-height:16px;text-align:center;"></div>
+    </div>
+    <button onclick="doCrmLogin()" style="background:linear-gradient(135deg,#7C3AED,#06B6D4);color:white;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:700;width:100%;box-shadow:0 4px 20px rgba(124,58,237,0.5);cursor:pointer;">
+      登入
+    </button>
+    <div style="font-size:11px;color:#475569;text-align:center;line-height:1.6;">
+      Token 可在 Mac 終端機輸入以下指令查看：<br>
+      <code style="color:#A78BFA;font-size:11px;">cat ~/line-bot/dashboard/.admin_token</code>
+    </div>
+  </div>
+</div>
+</body>
+</html>
