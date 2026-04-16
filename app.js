@@ -223,56 +223,97 @@ async function switchRichMenuForUser(source, richMenuId) {
   }
 }
 
+// ── 智能模型路由：根據訊息複雜度自動選擇模型 ──────────────
+function classifyMessageComplexity(text) {
+  if (!text) return 'simple';
+  const t = text.trim();
+
+  // 超短訊息 → 簡單
+  if (t.length < 10) return 'simple';
+
+  // 複雜情境關鍵字
+  const complexPatterns = [
+    /理賠|核保|保單|條款|保費|投保|續保|除外|批註/,
+    /稅|節稅|遺產|傳承|贈與|申報|扣除額/,
+    /退休|年金|長照|失能|養老|規劃|配置/,
+    /基金|股票|投資|ETF|債券|宣告利率|內扣/,
+    /手術|住院|疾病|確診|體況|三高|糖尿病|高血壓|癌症/,
+    /比較|差別|分析|建議|推薦|哪個比較好|值不值得/,
+    /擔心|不安|焦慮|難過|壓力|不知道怎麼辦/,  // 情緒
+    /如果|假設|萬一|要是|情況下/,              // 假設推理
+  ];
+  for (const p of complexPatterns) {
+    if (p.test(t)) return 'complex';
+  }
+
+  // 長訊息（>40字）通常需要深度回應
+  if (t.length > 40) return 'complex';
+
+  return 'simple';
+}
+
+async function _replyWithClaude(prompt, messages) {
+  if (!anthropicClient) return null;
+  const response = await anthropicClient.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 8096,
+    system: personaInstruction,
+    messages,
+  });
+  return response?.content?.[0]?.text?.trim() || null;
+}
+
+async function _replyWithGemini(prompt) {
+  if (!genAI) return null;
+  const model = genAI.getGenerativeModel({
+    model: GEMINI_MODEL,
+    systemInstruction: personaInstruction,
+  });
+  const result = await model.generateContent(prompt);
+  return result?.response?.text()?.trim() || null;
+}
+
 async function getAssistantReply(event, rawText) {
   const displayName = await fetchDisplayName(event?.source);
   const userId = event?.source?.type === 'user' ? event.source.userId : null;
   const prompt = await buildPrompt(rawText, event, displayName);
 
-  // 從 Supabase 載入該用戶的對話歷史（本地快取優先）
+  // 從 Supabase 載入對話歷史
   const history = await memoryStore.loadSessionHistory(userId);
   const messages = [...history, { role: 'user', content: prompt }];
 
-  if (anthropicClient) {
-    try {
-      const response = await anthropicClient.messages.create({
-        model: CLAUDE_MODEL,
-        max_tokens: 8096,
-        system: personaInstruction,
-        messages,
-      });
-      const textResponse = response?.content?.[0]?.text?.trim();
-      if (textResponse) {
-        await memoryStore.saveSessionMessage(userId, 'user', prompt);
-        await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
-        // 非同步：主動推送偵測 + CRM 摘要追蹤
-        proactivePush.detectAndStoreTrigger(userId, rawText, textResponse).catch(console.error);
-        crmIntegration.trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore).catch(console.error);
-        return textResponse;
-      }
-    } catch (error) {
-      console.error('Anthropic 回應失敗：', error);
+  // 智能路由：判斷訊息複雜度
+  const complexity = classifyMessageComplexity(rawText);
+  const isComplex = complexity === 'complex';
+  console.log(`[路由] ${isComplex ? '🧠 複雜 → Claude' : '⚡ 簡單 → Gemini'} | "${rawText?.slice(0, 30)}"`);
+
+  let textResponse = null;
+
+  if (isComplex) {
+    // 複雜：先用 Claude，失敗才 fallback Gemini
+    try { textResponse = await _replyWithClaude(prompt, messages); }
+    catch (e) { console.error('Claude 失敗，切換 Gemini：', e.message); }
+    if (!textResponse) {
+      try { textResponse = await _replyWithGemini(prompt); }
+      catch (e) { console.error('Gemini fallback 失敗：', e.message); }
+    }
+  } else {
+    // 簡單：先用 Gemini，失敗才 fallback Claude
+    try { textResponse = await _replyWithGemini(prompt); }
+    catch (e) { console.error('Gemini 失敗，切換 Claude：', e.message); }
+    if (!textResponse) {
+      try { textResponse = await _replyWithClaude(prompt, messages); }
+      catch (e) { console.error('Claude fallback 失敗：', e.message); }
     }
   }
 
-  if (genAI) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: GEMINI_MODEL,
-        systemInstruction: personaInstruction,
-      });
-      const result = await model.generateContent(prompt);
-      const textResponse = result?.response?.text()?.trim();
-      if (textResponse) {
-        await memoryStore.saveSessionMessage(userId, 'user', prompt);
-        await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
-        // 非同步：主動推送偵測 + CRM 摘要追蹤
-        proactivePush.detectAndStoreTrigger(userId, rawText, textResponse).catch(console.error);
-        crmIntegration.trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore).catch(console.error);
-        return textResponse;
-      }
-    } catch (error) {
-      console.error('Gemini 回應失敗：', error);
-    }
+  if (textResponse) {
+    await memoryStore.saveSessionMessage(userId, 'user', prompt);
+    await memoryStore.saveSessionMessage(userId, 'assistant', textResponse);
+    // 非同步：主動推送偵測 + CRM 摘要追蹤
+    proactivePush.detectAndStoreTrigger(userId, rawText, textResponse).catch(console.error);
+    crmIntegration.trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore).catch(console.error);
+    return textResponse;
   }
 
   return buildReply(rawText);
