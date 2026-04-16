@@ -1156,11 +1156,21 @@ async function syncLineContacts(){
   };
   try{
     const rs = await fetch('/api/contacts-live',{headers:{'x-admin-token':token}});
+    if(rs.status===401){
+      $('syncMsg').innerText='❌ Token 認證失敗（401）— 請重新設定正確的 Admin Token';
+      crmToast('❌ Token 錯誤，請重新輸入 Admin Token 後再同步','err',7000);
+      return;
+    }
     const dataJson = await rs.json();
+    if(dataJson?.ok===false){
+      $('syncMsg').innerText='同步失敗：'+(dataJson.error||'伺服器錯誤');
+      crmToast('❌ 同步失敗：'+(dataJson.error||'伺服器錯誤'),'err',5000);
+      return;
+    }
     const list = Array.isArray(dataJson) ? dataJson : (Array.isArray(dataJson?.contacts) ? dataJson.contacts : []);
     if(!Array.isArray(list) || !list.length){
-      $('syncMsg').innerText = `同步失敗：沒有拿到名單（請確認 token 是否正確）`;
-      crmToast('❌ 同步失敗：請確認 Token 正確','err',5000);
+      $('syncMsg').innerText=`同步失敗：Bot 名單為空（來源：${dataJson?.source||'未知'}）— Render 可能正在啟動，請稍後再試`;
+      crmToast('⚠️ Bot 名單為空，Render 可能正在啟動中，請 1 分鐘後再試','err',6000);
       return;
     }
     let add=0,upd=0;
