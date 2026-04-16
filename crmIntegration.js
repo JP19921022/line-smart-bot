@@ -7,8 +7,37 @@ const CRM_TOKEN    = process.env.CRM_ADMIN_TOKEN;
 // 每累積幾則新訊息就生成一次摘要
 const SUMMARY_THRESHOLD = 3;
 
-// 本地計數器 { userId: count }（重啟歸零，但不影響功能）
-const msgCounter = new Map();
+// ── 從 Supabase 計算距離上次摘要後的新訊息數（Render 重啟也不歸零）──
+async function _getMsgCountSinceLastSummary(userId) {
+  if (!supabase) return 0;
+  try {
+    // 取得最近一次摘要的時間
+    const { data: lastLog } = await supabase
+      .from('interaction_logs')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('type', '💬 LINE')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const since = lastLog && lastLog[0]
+      ? lastLog[0].created_at
+      : new Date(0).toISOString(); // 從未摘要過 → 從頭算
+
+    // 計算那之後的 user 訊息數
+    const { count } = await supabase
+      .from('conversation_history')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('role', 'user')
+      .gt('created_at', since);
+
+    return count || 0;
+  } catch (err) {
+    console.error('計算訊息數失敗：', err.message);
+    return 0;
+  }
+}
 
 // ──────────────────────────────────────────────
 // 每次 AI 回覆後呼叫：計數 + 必要時自動摘要
@@ -16,11 +45,20 @@ const msgCounter = new Map();
 async function trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore) {
   if (!userId || !anthropicClient) return;
 
-  const count = (msgCounter.get(userId) || 0) + 1;
-  msgCounter.set(userId, count);
+  // 用 Supabase 計數（Render 重啟不歸零），fallback 用記憶體計數
+  let count = 0;
+  if (supabase) {
+    count = await _getMsgCountSinceLastSummary(userId);
+  } else {
+    // fallback：記憶體計數
+    count = (trackAndMaybeSummarize._counter?.get(userId) || 0) + 1;
+    if (!trackAndMaybeSummarize._counter) trackAndMaybeSummarize._counter = new Map();
+    trackAndMaybeSummarize._counter.set(userId, count);
+  }
+
+  console.log(`[CRM] ${displayName || userId} 距上次摘要：${count} 則`);
 
   if (count < SUMMARY_THRESHOLD) return;
-  msgCounter.set(userId, 0); // 重置計數
 
   // 非同步執行，不阻塞主回覆流程
   setImmediate(() => {
