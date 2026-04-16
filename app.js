@@ -1511,7 +1511,7 @@ app.post('/api/survey-track', express.json(), (req, res) => {
   }
 });
 
-app.get('/admin/contacts/export', (req, res) => {
+app.get('/admin/contacts/export', async (req, res) => {
   try {
     const token = req.query.token;
     const expected = process.env.ADMIN_EXPORT_TOKEN;
@@ -1523,9 +1523,43 @@ app.get('/admin/contacts/export', (req, res) => {
     const path = require('path');
     const file = path.join(__dirname, 'contacts.json');
 
-    if (!fs.existsSync(file)) return res.json([]);
-    const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return res.json(Array.isArray(data) ? data : []);
+    // 本機 contacts.json（當前 session 記憶體來源）
+    let contacts = [];
+    if (fs.existsSync(file)) {
+      try { contacts = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+      if (!Array.isArray(contacts)) contacts = [];
+    }
+
+    // ── Supabase 歷史聯絡人補全（Render 重啟後 contacts.json 為空，但 Supabase 有全記錄）──
+    try {
+      const sb = require('./supabaseClient');
+      if (sb) {
+        const { data } = await sb
+          .from('interaction_logs')
+          .select('user_id, display_name, created_at')
+          .order('created_at', { ascending: false })
+          .limit(500);
+        if (data && data.length > 0) {
+          const existingIds = new Set(contacts.map(c => c.userId));
+          const supabaseMap = new Map();
+          for (const row of data) {
+            if (row.user_id && !supabaseMap.has(row.user_id)) {
+              supabaseMap.set(row.user_id, row.display_name || '新客戶');
+            }
+          }
+          for (const [userId, name] of supabaseMap) {
+            if (!existingIds.has(userId)) {
+              contacts.push({ userId, name, enabled: true, last_contact_at: null });
+            }
+          }
+          console.log(`[contacts/export] 本機 ${existingIds.size} + Supabase 補 ${contacts.length - existingIds.size} = 共 ${contacts.length} 筆`);
+        }
+      }
+    } catch (e) {
+      console.error('[contacts/export] Supabase fallback 失敗：', e.message);
+    }
+
+    return res.json(contacts);
   } catch (err) {
     console.error('export contacts error:', err);
     return res.status(500).json({ error: 'internal_error' });

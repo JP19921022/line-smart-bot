@@ -53,6 +53,29 @@ async function _getMsgCountSinceLastSummary(userId) {
   }
 }
 
+// ── 確保聯絡人永久存在 Supabase（Render 重啟也不遺失）──────────
+async function ensureContactInSupabase(userId, displayName) {
+  if (!supabase || !userId) return;
+  try {
+    const { count } = await supabase
+      .from('interaction_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    if (!count) {
+      await supabase.from('interaction_logs').insert({
+        client_id: `line_${userId}`,
+        user_id: userId,
+        display_name: displayName || '新客戶',
+        type: '👤 新聯絡人',
+        content: '首次傳訊，系統自動建立聯絡人記錄',
+      });
+      console.log(`[CRM] 新聯絡人已存入 Supabase：${displayName || userId}`);
+    }
+  } catch (e) {
+    // 非關鍵，靜默忽略
+  }
+}
+
 // ──────────────────────────────────────────────
 // 每次 AI 回覆後呼叫：計數 + 必要時自動摘要
 // ──────────────────────────────────────────────
@@ -60,6 +83,9 @@ async function trackAndMaybeSummarize(userId, displayName, _passedClient, memory
   // 優先用自建 client，確保 Gemini 路線也能生成摘要
   const client = _anthropic || _passedClient;
   if (!userId || !client) return;
+
+  // 每則訊息都確保聯絡人存在 Supabase（Render 重啟不遺失任何人）
+  ensureContactInSupabase(userId, displayName).catch(() => {});
 
   // 用 Supabase 計數（Render 重啟不歸零），fallback 用記憶體計數
   let count = 0;
