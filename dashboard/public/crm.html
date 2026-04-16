@@ -976,6 +976,13 @@ function quickEdit(id){
   editLead(id);
 }
 async function delLead(id){const ok=await crmConfirm('刪除客戶','確定要刪除此客戶？此操作無法復原。','🗑️ 確認刪除'); if(!ok) return; leads=leads.filter(x=>x.id!==id); persist(); render(); crmToast('已刪除','ok');}
+async function markContacted(id){
+  const lead=leads.find(x=>x.id===id); if(!lead) return;
+  const ok=await crmConfirm('標記已聯繫',`確認已聯繫「${lead.name}」？\n將清除本次回訪提醒，您可再次編輯設定下次日期。`,'✅ 確認');
+  if(!ok) return;
+  lead.nextFollowAt=''; lead.updatedAt=new Date().toISOString();
+  persist(); render(); crmToast(`✅ 已標記「${lead.name}」聯繫完成`,'ok');
+}
 function setBirthdaySort(mode){birthdaySort=mode;currentPage=1;render();}
 function setLineBoundFilter(){showBoundOnly=!showBoundOnly;currentPage=1;const btn=document.getElementById('btnBoundFilter');if(btn){btn.classList.toggle('btn-active',showBoundOnly);}render();}
 function setHighPriFilter(){showHighPriOnly=!showHighPriOnly;currentPage=1;const btn=document.getElementById('btnHighPri');if(btn){btn.classList.toggle('btn-active',showHighPriOnly);}render();}
@@ -1066,15 +1073,15 @@ function render(){
   }
   const tl=$('todayList');
   if(tl){
-    const rowHtml=(x,label,labelColor)=>`<div class="today-row"><div class="today-name">${x.name}<span style="font-size:11px;color:var(--sub2);font-weight:400;margin-left:6px">${x.phone||''}</span></div><span class="tag" style="font-size:10px">${x.stage}</span>${x.grade?`<span class="grade-badge grade-${x.grade}" style="font-size:10px">${x.grade}</span>`:''}<div class="today-date" style="color:${labelColor}">${label} ${x.nextFollowAt}</div><button class="btn btn-sm" onclick="quickEdit('${x.id}')">編輯</button></div>`;
+    const rowHtml=(x,label,labelColor,showDone=false)=>`<div class="today-row"><div class="today-name">${x.name}<span style="font-size:11px;color:var(--sub2);font-weight:400;margin-left:6px">${x.phone||''}</span></div><span class="tag" style="font-size:10px">${x.stage}</span>${x.grade?`<span class="grade-badge grade-${x.grade}" style="font-size:10px">${x.grade}</span>`:''}<div class="today-date" style="color:${labelColor}">${label} ${x.nextFollowAt}</div>${showDone?`<button class="btn btn-sm btn-success" onclick="markContacted('${x.id}')" style="background:var(--emerald);color:#fff;border-color:transparent">✅ 已聯繫</button>`:''}  <button class="btn btn-sm" onclick="quickEdit('${x.id}')">編輯</button></div>`;
     let html='';
     if(overdueLeads.length){
       html+=`<div style="font-size:11px;font-weight:700;color:var(--red);letter-spacing:.06em;margin:4px 0 6px">⚠️ 逾期未聯繫（${overdueLeads.length} 位）</div>`;
-      html+=overdueLeads.map(x=>rowHtml(x,'逾期','var(--red)')).join('');
+      html+=overdueLeads.map(x=>rowHtml(x,'逾期','var(--red)',true)).join('');
     }
     if(todayLeads.length){
       html+=`<div style="font-size:11px;font-weight:700;color:var(--amber);letter-spacing:.06em;margin:${overdueLeads.length?'12px':' 4px'} 0 6px">📅 今日回訪（${todayLeads.length} 位）</div>`;
-      html+=todayLeads.map(x=>rowHtml(x,'今天','var(--amber)')).join('');
+      html+=todayLeads.map(x=>rowHtml(x,'今天','var(--amber)',true)).join('');
     }
     if(upcomingLeads.length){
       html+=`<div style="font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:.06em;margin:${urgentCount?'12px':'4px'} 0 6px">🗓️ 未來 7 天（${upcomingLeads.length} 位）</div>`;
@@ -1334,10 +1341,13 @@ function addActivity(){
   renderActTimeline(_actCustomerId);
   crmToast(`✅ 已記錄「${_actSelectedType}」`,'ok');
 }
-function deleteActivity(cid,aid){
+async function deleteActivity(cid,aid){
+  const ok=await crmConfirm('刪除記錄','確定要刪除這筆互動記錄？','🗑️ 刪除');
+  if(!ok) return;
   const acts=getActivities(cid).filter(a=>a.id!==aid);
   saveActivities(cid,acts);
   renderActTimeline(cid);
+  crmToast('已刪除記錄','ok',1500);
 }
 
 // ── 群發名單建立器 ────────────────────────────────────────────
