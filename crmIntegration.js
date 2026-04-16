@@ -7,6 +7,20 @@ const CRM_TOKEN    = process.env.CRM_ADMIN_TOKEN;
 // 每累積幾則新訊息就生成一次摘要
 const SUMMARY_THRESHOLD = 3;
 
+// ── 自建 Anthropic client（不依賴外部傳入，確保 Gemini 路線也能生成摘要）──
+let _anthropic = null;
+try {
+  if (process.env.ANTHROPIC_API_KEY) {
+    const { default: Anthropic } = require('@anthropic-ai/sdk');
+    _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    console.log('[CRM] Anthropic client 初始化成功');
+  } else {
+    console.warn('[CRM] ANTHROPIC_API_KEY 未設定，CRM 摘要功能停用');
+  }
+} catch (e) {
+  console.error('[CRM] Anthropic 初始化失敗：', e.message);
+}
+
 // ── 從 Supabase 計算距離上次摘要後的新訊息數（Render 重啟也不歸零）──
 async function _getMsgCountSinceLastSummary(userId) {
   if (!supabase) return 0;
@@ -42,8 +56,10 @@ async function _getMsgCountSinceLastSummary(userId) {
 // ──────────────────────────────────────────────
 // 每次 AI 回覆後呼叫：計數 + 必要時自動摘要
 // ──────────────────────────────────────────────
-async function trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore) {
-  if (!userId || !anthropicClient) return;
+async function trackAndMaybeSummarize(userId, displayName, _passedClient, memoryStore) {
+  // 優先用自建 client，確保 Gemini 路線也能生成摘要
+  const client = _anthropic || _passedClient;
+  if (!userId || !client) return;
 
   // 用 Supabase 計數（Render 重啟不歸零），fallback 用記憶體計數
   let count = 0;
@@ -62,7 +78,7 @@ async function trackAndMaybeSummarize(userId, displayName, anthropicClient, memo
 
   // 非同步執行，不阻塞主回覆流程
   setImmediate(() => {
-    _generateAndStore(userId, displayName, anthropicClient, memoryStore)
+    _generateAndStore(userId, displayName, client, memoryStore)
       .catch(err => console.error('CRM 摘要失敗：', err.message));
   });
 }
@@ -101,6 +117,16 @@ ${conversationText}`;
     summary = res.content[0].text.trim();
   } catch (err) {
     console.error('摘要 AI 呼叫失敗：', err.message);
+    // 錯誤寫入 Supabase，方便診斷
+    if (supabase) {
+      await supabase.from('interaction_logs').insert({
+        client_id: `line_${userId}`,
+        user_id: userId,
+        display_name: displayName || '',
+        type: '❌ ERROR',
+        content: `AI 呼叫失敗：${err.message}`,
+      }).catch(() => {});
+    }
     return;
   }
 
@@ -260,9 +286,10 @@ async function _pushSummaryToCrm(matchedLead, summary) {
 // 手動觸發：立即生成並儲存當前對話摘要
 // 可由特定關鍵字（如「結束對話」）或 webhook 呼叫
 // ──────────────────────────────────────────────
-async function forceSummary(userId, displayName, anthropicClient, memoryStore) {
-  msgCounter.set(userId, 0);
-  await _generateAndStore(userId, displayName, anthropicClient, memoryStore);
+async function forceSummary(userId, displayName, _passedClient, memoryStore) {
+  const client = _anthropic || _passedClient;
+  if (!client) { console.error('[CRM] forceSummary: 無可用 Anthropic client'); return; }
+  await _generateAndStore(userId, displayName, client, memoryStore);
 }
 
 module.exports = { trackAndMaybeSummarize, forceSummary };
