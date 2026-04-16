@@ -742,6 +742,8 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
             <button id="btnBoundFilter" class="btn btn-sm" onclick="setLineBoundFilter()">已綁定 ↓</button>
             <button id="btnHighPri" class="btn btn-sm" onclick="setHighPriFilter()">🔥 高優先</button>
             <button class="btn btn-sm btn-ghost" onclick="mergeSelected()">合併選取</button>
+            <button class="btn btn-sm" onclick="bulkSetBound('yes')" title="將勾選的客戶設為已綁定 LINE" style="background:rgba(16,185,129,0.13);color:var(--emerald);border-color:rgba(16,185,129,0.35)">✅ 批次綁定</button>
+            <button class="btn btn-sm btn-ghost" onclick="bulkSetBound('no')" title="將勾選的客戶設為未綁定">☐ 取消綁定</button>
             <button class="btn btn-sm btn-ghost" onclick="exportExcel()">📤 Excel</button>
             <select id="pageSize" onchange="setPageSize(this.value)" style="width:80px">
               <option value="15">15筆</option>
@@ -976,6 +978,29 @@ function quickEdit(id){
   editLead(id);
 }
 async function delLead(id){const ok=await crmConfirm('刪除客戶','確定要刪除此客戶？此操作無法復原。','🗑️ 確認刪除'); if(!ok) return; leads=leads.filter(x=>x.id!==id); persist(); render(); crmToast('已刪除','ok');}
+function toggleBound(id){
+  const lead=leads.find(x=>x.id===id);
+  if(!lead) return;
+  lead.lineBound=lead.lineBound==='yes'?'no':'yes';
+  lead.updatedAt=new Date().toISOString();
+  persist(); render();
+  crmToast(`${lead.name} ${lead.lineBound==='yes'?'✅ 已綁定 LINE':'已取消綁定'}`,'ok',1800);
+}
+async function bulkSetBound(val){
+  const ids=[...selectedIds];
+  if(!ids.length) return crmToast('請先勾選要操作的客戶','err',2000);
+  const label=val==='yes'?'設為已綁定':'設為未綁定';
+  const ok=await crmConfirm(`批次${label}`,`確定將 ${ids.length} 位客戶${label}？`,'確認');
+  if(!ok) return;
+  let n=0;
+  ids.forEach(id=>{
+    const lead=leads.find(x=>x.id===id);
+    if(lead){lead.lineBound=val;lead.updatedAt=new Date().toISOString();n++;}
+  });
+  selectedIds.clear();
+  persist(); render();
+  crmToast(`✅ 已將 ${n} 位客戶${label}`,'ok');
+}
 async function markContacted(id){
   const lead=leads.find(x=>x.id===id); if(!lead) return;
   const ok=await crmConfirm('標記已聯繫',`確認已聯繫「${lead.name}」？\n將清除本次回訪提醒，您可再次編輯設定下次日期。`,'✅ 確認');
@@ -1122,7 +1147,7 @@ function render(){
     pageRows.map(x=>{
       const isEditing=_editingId===x.id;
       const safeName=(x.name||'').replace(/'/g,"\\'");
-      return `<tr class="${isEditing?'editing-row':''}"><td><input type='checkbox' ${selectedIds.has(x.id)?'checked':''} onchange="toggleSelect('${x.id}',this.checked)" style="width:auto"/></td><td class="name-cell" ondblclick="quickEdit('${x.id}')" style="font-weight:600">${isEditing?'✏️ ':''}<span>${x.name}</span></td><td>${x.phone||''}</td><td>${gradeHtml(x.grade)}</td><td>${renderTags(x.tags)}</td><td>${x.lineBound==='yes'?'<span style="color:var(--emerald)">✅</span>':'<span style="color:var(--sub)">—</span>'}</td><td class="${priClass(x.priority)}" style="font-size:12px;font-weight:700">${priLabel(x.priority)}</td><td>${x.birthday||''}</td><td>${x.expiryAt||''}</td><td><span class="tag">${x.stage}</span></td><td>${x.nextFollowAt||''}</td><td style="font-size:11px;color:var(--sub)">${x.updatedAt?new Date(x.updatedAt).toLocaleString('zh-TW',{hour12:false}):''}</td><td><button class="btn btn-sm btn-ghost" onclick="openCustomerFolder('${x.id}','${safeName}')">資料夾</button> <button class="btn btn-sm btn-danger" onclick="delLead('${x.id}')">刪除</button></td></tr>`;
+      return `<tr class="${isEditing?'editing-row':''}"><td><input type='checkbox' ${selectedIds.has(x.id)?'checked':''} onchange="toggleSelect('${x.id}',this.checked)" style="width:auto"/></td><td class="name-cell" ondblclick="quickEdit('${x.id}')" style="font-weight:600">${isEditing?'✏️ ':''}<span>${x.name}</span></td><td>${x.phone||''}</td><td>${gradeHtml(x.grade)}</td><td>${renderTags(x.tags)}</td><td>${x.lineBound==='yes'?`<button onclick="toggleBound('${x.id}')" title="點擊切換綁定" style="background:none;border:none;cursor:pointer;font-size:17px;padding:2px 6px;border-radius:5px" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='none'">✅</button>`:`<button onclick="toggleBound('${x.id}')" title="點擊切換綁定" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 6px;border-radius:5px;color:var(--sub)" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='none'">☐</button>`}</td><td class="${priClass(x.priority)}" style="font-size:12px;font-weight:700">${priLabel(x.priority)}</td><td>${x.birthday||''}</td><td>${x.expiryAt||''}</td><td><span class="tag">${x.stage}</span></td><td>${x.nextFollowAt||''}</td><td style="font-size:11px;color:var(--sub)">${x.updatedAt?new Date(x.updatedAt).toLocaleString('zh-TW',{hour12:false}):''}</td><td><button class="btn btn-sm btn-ghost" onclick="openCustomerFolder('${x.id}','${safeName}')">資料夾</button> <button class="btn btn-sm btn-danger" onclick="delLead('${x.id}')">刪除</button></td></tr>`;
     }).join('');
   $('pager').innerHTML=`<span class='small' style='margin-right:6px'>共 ${rows.length} 筆 第 ${currentPage}/${totalPages} 頁</span>` + Array.from({length:totalPages},(_,i)=>`<button class='btn' onclick='setPage(${i+1})' style='${i+1===currentPage?'outline:2px solid rgba(139,92,246,0.6);':''}'>${i+1}</button>`).join('');
 
