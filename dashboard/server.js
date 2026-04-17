@@ -957,7 +957,9 @@ app.get('/api/top-responders', requireAdmin, async (req, res) => {
     const tokenCandidates = [ADMIN_EXPORT_TOKEN, '9be202464d61893592d114323d863068d8d07a8e2aa8f42a'];
     for (const tk of tokenCandidates) {
       if (!tk) continue;
-      const r = await fetch(`${RENDER_BASE_URL}/admin/contacts/export?token=${tk}`);
+      const r = await fetch(`${RENDER_BASE_URL}/admin/contacts/export?token=${tk}`, {
+        signal: AbortSignal.timeout(8000)
+      });
       if (!r.ok) continue;
       const remote = await r.json();
       if (Array.isArray(remote) && remote.length) {
@@ -1013,47 +1015,70 @@ app.get('/api/contacts', requireAdmin, (req, res) => res.json(readJson(CONTACTS_
 
 app.get('/api/contacts-live', requireAdmin, async (req, res) => {
   const local = readJson(CONTACTS_FILE, []);
-  const nameMap = new Map(local.filter(x=>x.userId).map(x=>[x.userId, x.name||'']));
+  // 以本機為基礎，建立 userId → contact 的 Map
+  const merged = new Map(local.filter(x=>x.userId).map(x=>[x.userId, {
+    userId: x.userId,
+    name: x.name || '新客戶',
+    last_contact_at: x.last_contact_at || null,
+    last_care_at: x.last_care_at || null,
+    enabled: x.enabled !== false
+  }]));
+
+  // 嘗試從 Render 補充額外聯絡人（不覆蓋本機資料）
   try {
     const tokenCandidates = [ADMIN_EXPORT_TOKEN, '9be202464d61893592d114323d863068d8d07a8e2aa8f42a'];
     for (const tk of tokenCandidates) {
       if (!tk) continue;
-      const r = await fetch(`${RENDER_BASE_URL}/admin/contacts/export?token=${tk}`);
+      const r = await fetch(`${RENDER_BASE_URL}/admin/contacts/export?token=${tk}`, {
+        signal: AbortSignal.timeout(8000)
+      });
       if (!r.ok) continue;
       const remote = await r.json();
       if (!Array.isArray(remote)) continue;
-      const contacts = remote.map(x => ({
-        userId: x.userId,
-        name: (x.name && x.name !== '新客戶') ? x.name : (nameMap.get(x.userId) || x.name || ''),
-        last_contact_at: x.last_contact_at || null,
-        last_care_at: x.last_care_at || null,
-        enabled: x.enabled !== false
-      }));
-      // 補全「新客戶」名稱
-      try {
-        let lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-        if (!lineToken) {
-          const envPath = path.join(ROOT, '.env');
-          if (fs.existsSync(envPath)) {
-            const txt = fs.readFileSync(envPath, 'utf8');
-            const m = txt.match(/^LINE_CHANNEL_ACCESS_TOKEN=(.*)$/m);
-            if (m) lineToken = m[1].trim().replace(/^"|"$/g, '');
-          }
-        }
-        if (lineToken) {
-          for (const c of contacts) {
-            if (!c.userId || (c.name && c.name !== '新客戶')) continue;
-            const pr = await fetch(`https://api.line.me/v2/bot/profile/${c.userId}`, { headers: { Authorization: `Bearer ${lineToken}` } });
-            if (!pr.ok) continue;
-            const pd = await pr.json();
-            if (pd?.displayName) c.name = pd.displayName;
-          }
-        }
-      } catch {}
-      return res.json({ ok:true, source:'render', contacts });
+      let added = 0;
+      for (const x of remote) {
+        if (!x.userId || merged.has(x.userId)) continue; // 本機已有的不覆蓋
+        merged.set(x.userId, {
+          userId: x.userId,
+          name: (x.name && x.name !== '新客戶') ? x.name : '新客戶',
+          last_contact_at: x.last_contact_at || null,
+          last_care_at: x.last_care_at || null,
+          enabled: x.enabled !== false
+        });
+        added++;
+      }
+      console.log(`[contacts-live] 本機 ${local.length} 筆 + Render 補 ${added} 筆 = 共 ${merged.size} 筆`);
+      break;
+    }
+  } catch (e) {
+    console.log('[contacts-live] Render 不可用，使用本機資料:', e.message);
+  }
+
+  const contacts = Array.from(merged.values());
+
+  // 補全「新客戶」名稱（從 LINE API 查詢）
+  try {
+    let lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
+    if (!lineToken) {
+      const envPath = path.join(ROOT, '.env');
+      if (fs.existsSync(envPath)) {
+        const txt = fs.readFileSync(envPath, 'utf8');
+        const m = txt.match(/^LINE_CHANNEL_ACCESS_TOKEN=(.*)$/m);
+        if (m) lineToken = m[1].trim().replace(/^"|"$/g, '');
+      }
+    }
+    if (lineToken) {
+      for (const c of contacts) {
+        if (!c.userId || (c.name && c.name !== '新客戶')) continue;
+        const pr = await fetch(`https://api.line.me/v2/bot/profile/${c.userId}`, { headers: { Authorization: `Bearer ${lineToken}` } });
+        if (!pr.ok) continue;
+        const pd = await pr.json();
+        if (pd?.displayName) c.name = pd.displayName;
+      }
     }
   } catch {}
-  return res.json({ ok:true, source:'local', contacts: local });
+
+  return res.json({ ok:true, source:'local+render', contacts });
 });
 
 app.get('/api/quadrant-targets', requireAdmin, (req, res) => {
