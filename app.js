@@ -1726,6 +1726,33 @@ app.post('/admin/global-manual', express.json(), (req, res) => {
   }
 });
 
+// ── /admin/line-summaries：供本機 dashboard 拉取對話摘要（不需本機 SUPABASE）──
+app.get('/admin/line-summaries', async (req, res) => {
+  try {
+    const token    = req.query.token;
+    const expected = process.env.ADMIN_EXPORT_TOKEN;
+    if (!expected) return res.status(500).json({ error: 'ADMIN_EXPORT_TOKEN not set' });
+    if (!token || token !== expected) return res.status(401).json({ error: 'unauthorized' });
+
+    const sb = require('./supabaseClient');
+    if (!sb) return res.json({ ok: true, summaries: [], note: 'supabase not configured on render' });
+
+    const { data, error } = await sb
+      .from('interaction_logs')
+      .select('id, client_id, user_id, display_name, type, content, created_at')
+      .eq('type', '💬 LINE')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+
+    return res.json({ ok: true, summaries: data || [] });
+  } catch (err) {
+    console.error('/admin/line-summaries error:', err.message);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`伺服器運行在 http://localhost:${PORT}`);
 
