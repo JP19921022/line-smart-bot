@@ -1755,6 +1755,48 @@ app.post('/admin/global-manual', express.json(), (req, res) => {
 });
 
 // ── /admin/line-summaries：供本機 dashboard 拉取對話摘要（不需本機 SUPABASE）──
+
+// ── 診斷：確認 conversation_history 資料表 ─────────
+app.get('/admin/check-memory', async (req, res) => {
+  const token = req.query.token;
+  const expected = process.env.ADMIN_EXPORT_TOKEN;
+  if (!expected || token !== expected) return res.status(401).json({ error: 'unauthorized' });
+  const sb = require('./supabaseClient');
+  if (!sb) return res.json({ ok: false, note: 'supabase not configured' });
+
+  try {
+    // 檢查 conversation_history 最新 5 筆
+    const { data: hist, error: e1 } = await sb
+      .from('conversation_history')
+      .select('user_id, role, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    // 檢查 user_memories 最新 5 筆
+    const { data: mems, error: e2 } = await sb
+      .from('user_memories')
+      .select('user_id, topic, created_at')
+      .order('created_at', { ascending: false })
+      .limit(5);
+
+    return res.json({
+      ok: true,
+      conversation_history: {
+        error: e1?.message || null,
+        count: hist?.length || 0,
+        latest: hist || [],
+      },
+      user_memories: {
+        error: e2?.message || null,
+        count: mems?.length || 0,
+        latest: mems || [],
+      }
+    });
+  } catch(e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.get('/admin/line-summaries', async (req, res) => {
   try {
     const token    = req.query.token;

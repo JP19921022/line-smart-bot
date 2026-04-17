@@ -1,10 +1,9 @@
 'use strict';
 /**
- * crm_sync_cron.js — 定時從 Render Supabase 同步 LINE 對話摘要到 CRM
- * pm2 啟動：pm2 start crm_sync_cron.js --name crm-sync --cron "0 * * * *"
- * 手動測試：node crm_sync_cron.js
+ * crm_sync_cron.js — 定時從 Render 同步 LINE 對話摘要到 CRM
+ * 功能：同步摘要 / 自動建檔新客戶 / keep-alive ping
+ * pm2：pm2 start crm_sync_cron.js --name crm-sync
  */
-
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const fs    = require('fs');
@@ -15,9 +14,9 @@ const ROOT           = __dirname;
 const CRM_LEADS_FILE = path.join(ROOT, 'data', 'crm_leads.json');
 const CONTACTS_FILE  = path.join(ROOT, 'contacts.json');
 const CRM_ACTS_FILE  = path.join(ROOT, 'data', 'crm_activities.json');
-const RENDER_URL     = (process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com')
-                      + '/admin/line-summaries?token='
-                      + (process.env.ADMIN_EXPORT_TOKEN || '9be202464d61893592d114323d863068d8d07a8e2aa8f42a');
+const RENDER_BASE    = process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com';
+const RENDER_URL     = RENDER_BASE + '/admin/line-summaries?token='
+                     + (process.env.ADMIN_EXPORT_TOKEN || '9be202464d61893592d114323d863068d8d07a8e2aa8f42a');
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -26,19 +25,32 @@ function writeJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
-function fetchJson(url) {
+function fetchJson(url, timeout = 30000) {
   return new Promise((resolve, reject) => {
-    https.get(url, { timeout: 20000 }, (res) => {
+    const req = https.get(url, { timeout }, (res) => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { reject(e); } });
-    }).on('error', reject).on('timeout', () => reject(new Error('timeout')));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
   });
 }
 
-// ── 建立 lineId / userId → CRM lead.id 的映射 ──
+// ── keep-alive：每 10 分鐘 ping Render ──────────
+function keepAlive() {
+  https.get(RENDER_BASE + '/status', { timeout: 10000 }, (res) => {
+    const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+    console.log(`[${now}] 💓 Render 狀態: HTTP ${res.statusCode}`);
+    res.resume();
+  }).on('error', (e) => {
+    console.warn(`💓 Keep-alive 失敗: ${e.message}`);
+  }).on('timeout', function() { this.destroy(); });
+}
+
+// ── 建立 lineId → CRM lead 的映射 ──────────────
 function buildMap(leads, contacts) {
-  const map = new Map(); // userId → { crmId, name }
+  const map = new Map();
   for (const l of leads) {
     if (l.lineId) map.set(l.lineId.trim(), { crmId: l.id, name: l.name });
   }
@@ -54,53 +66,79 @@ function buildMap(leads, contacts) {
   return map;
 }
 
-// ── 自動配對：把 contacts.json 未配對的 userId 補入 crm_leads.json ──
+// ── 名字比對自動配對 ───────────────────────────
 function autoLinkNewContacts(leads, contacts) {
   const existingIds = new Set(leads.filter(l => l.lineId).map(l => l.lineId.trim()));
   let updated = 0;
   for (const c of contacts) {
     if (!c.userId || c.userId === 'U_TEST_001') continue;
     if (existingIds.has(c.userId)) continue;
-    // 名字比對
     const dn = (c.name || '').trim().toLowerCase();
     const match = leads.find(l => {
-      if (l.lineId) return false; // 已配對的跳過
+      if (l.lineId) return false;
       const n = (l.name || '').trim().toLowerCase();
       return n && dn && n.length > 1 && (n.includes(dn) || dn.includes(n));
     });
     if (match) {
-      match.lineId    = c.userId;
-      match.lineBound = 'yes';
+      match.lineId = c.userId; match.lineBound = 'yes';
       match.updatedAt = new Date().toISOString();
-      existingIds.add(c.userId);
-      updated++;
-      console.log(`  🔗 自動配對：${c.name} → ${match.name} (${match.id})`);
+      existingIds.add(c.userId); updated++;
+      console.log(`  🔗 自動配對：${c.name} → ${match.name}`);
     }
   }
   return updated;
 }
 
+// ── 自動建立新客戶 CRM 名片 ────────────────────
+function autoCreateNewLeads(leads, summaries, map) {
+  const existingLineIds = new Set(leads.filter(l => l.lineId).map(l => l.lineId.trim()));
+  let created = 0;
+  const seen = new Set();
+
+  for (const row of summaries) {
+    const uid = row.user_id || (row.client_id || '').replace(/^line_/, '');
+    if (!uid || uid === 'U_TEST_001' || existingLineIds.has(uid) || map.has(uid) || seen.has(uid)) continue;
+    seen.add(uid);
+
+    const name = row.display_name || `LINE用戶_${uid.slice(-6)}`;
+    const newLead = {
+      id:        `line_${Date.now()}_${uid.slice(-6)}`,
+      name,
+      lineId:    uid,
+      lineBound: 'yes',
+      phone:     '', email: '',
+      status:    '待確認',
+      tags:      ['LINE自動建檔'],
+      notes:     '從 LINE 對話自動建立，請確認並補充客戶資料',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    leads.push(newLead);
+    map.set(uid, { crmId: newLead.id, name });
+    existingLineIds.add(uid);
+    created++;
+    console.log(`  🆕 自動建檔：${name} (${uid.slice(0,15)}...)`);
+  }
+  return created;
+}
+
 async function runSync() {
   const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-  console.log(`\n[${now}] 🔄 開始同步 LINE 對話摘要...`);
+  console.log(`\n[${now}] 🔄 開始同步...`);
 
-  // 1. 讀取本機資料
   const leadsRaw = readJson(CRM_LEADS_FILE, []);
   const leads    = Array.isArray(leadsRaw) ? leadsRaw : (leadsRaw.leads || []);
   const contacts = readJson(CONTACTS_FILE, []);
 
-  // 2. 自動配對未連結的聯絡人
+  // 1. 名字比對自動配對
   const linked = autoLinkNewContacts(leads, contacts);
-  if (linked > 0) {
-    writeJson(CRM_LEADS_FILE, leads);
-    console.log(`  ✅ 自動配對 ${linked} 位新客戶的 lineId`);
-  }
+  if (linked > 0) writeJson(CRM_LEADS_FILE, leads);
 
-  // 3. 建立映射 map
+  // 2. 建立映射
   const map = buildMap(leads, contacts);
-  console.log(`  buildMap: ${map.size} 筆對應`);
+  console.log(`  映射：${map.size} 筆`);
 
-  // 4. 從 Render 拉摘要
+  // 3. 從 Render 拉摘要
   let summaries = [];
   try {
     const data = await fetchJson(RENDER_URL);
@@ -110,10 +148,13 @@ async function runSync() {
     console.error(`  ❌ Render 拉取失敗: ${e.message}`);
     return;
   }
+  if (!summaries.length) { console.log('  ⚠️ 0 筆'); return; }
 
-  if (summaries.length === 0) {
-    console.log('  ⚠️ 0 筆摘要，無需更新');
-    return;
+  // 4. 自動建立新客戶名片
+  const created = autoCreateNewLeads(leads, summaries, map);
+  if (created > 0) {
+    writeJson(CRM_LEADS_FILE, leads);
+    console.log(`  🆕 新建 ${created} 位客戶名片`);
   }
 
   // 5. 合併到 crm_activities.json
@@ -121,25 +162,17 @@ async function runSync() {
   let merged = 0, skipped = 0;
 
   for (const row of summaries) {
-    let cid  = row.client_id || '';
+    let cid = row.client_id || '';
     let name = row.display_name || '';
-
-    // 嘗試換成 CRM imp_xxx id
     if (cid.startsWith('line_')) {
-      const uid = cid.replace(/^line_/, '');
-      const info = map.get(uid);
+      const info = map.get(cid.replace(/^line_/, ''));
       if (info) { cid = info.crmId; name = info.name; }
     }
     if (row.user_id && (!cid || cid.startsWith('line_'))) {
       const info = map.get(row.user_id);
       if (info) { cid = info.crmId; name = info.name; }
     }
-
-    // 如果還是無法配對，用 LINE 名字建立臨時 key（讓使用者能看到）
-    if (!cid || cid.startsWith('line_')) {
-      skipped++;
-      continue; // 暫時跳過，等用戶在 CRM 建立該聯絡人
-    }
+    if (!cid || cid.startsWith('line_')) { skipped++; continue; }
 
     const act = {
       id:      'sb_' + (row.id || Date.now() + Math.random()),
@@ -151,7 +184,6 @@ async function runSync() {
     if (!all[cid].some(a => a.id === act.id)) { all[cid].push(act); merged++; }
   }
 
-  // 排序並限制每人最多 200 筆
   for (const cid of Object.keys(all)) {
     all[cid].sort((a, b) => new Date(b.at) - new Date(a.at));
     if (all[cid].length > 200) all[cid] = all[cid].slice(0, 200);
@@ -159,32 +191,15 @@ async function runSync() {
 
   writeJson(CRM_ACTS_FILE, all);
   const total = Object.values(all).reduce((s, a) => s + a.length, 0);
-  console.log(`  ✅ 同步完成：${merged} 筆新增，${skipped} 筆待配對，共 ${total} 筆（${Object.keys(all).length} 位客戶）`);
+  console.log(`  ✅ +${merged} 新增, ${skipped} 待配對, 共 ${total} 筆 (${Object.keys(all).length} 客戶)`);
 }
 
-// ── Keep-alive：每 10 分鐘 ping Render，讓它永不睡覺 ──────────────
-const RENDER_BASE = process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com';
-function keepAlive() {
-  https.get(RENDER_BASE + '/health', { timeout: 10000 }, (res) => {
-    const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-    console.log(`[${now}] 💓 Keep-alive ping → Render HTTP ${res.statusCode}`);
-    res.resume();
-  }).on('error', (e) => {
-    const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
-    console.warn(`[${now}] 💓 Keep-alive 失敗: ${e.message}`);
-  }).on('timeout', function() { this.destroy(); });
-}
-
-// 立即執行一次
+// 立即執行
 runSync().catch(console.error);
 keepAlive();
 
-// 之後每 10 分鐘 ping Render（讓它永不睡覺）
+// 每 10 分鐘 keep-alive
 setInterval(keepAlive, 10 * 60 * 1000);
-console.log('💓 Keep-alive 已啟動，每 10 分鐘 ping Render 保持在線');
-
-// 每 30 分鐘同步一次 CRM 摘要（pm2 cron 模式下另由排程處理）
-if (process.env.NODE_ENV !== 'cron') {
-  setInterval(() => runSync().catch(console.error), 30 * 60 * 1000);
-  console.log('⏰ 自動同步已啟動，每 30 分鐘執行一次');
-}
+// 每 30 分鐘同步
+setInterval(() => runSync().catch(console.error), 30 * 60 * 1000);
+console.log('⏰ 已啟動：keep-alive 每10分鐘 / 同步每30分鐘');
