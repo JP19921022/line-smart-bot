@@ -1314,6 +1314,10 @@ async function syncActivitiesFromServer(forceRender=false){
   const tok=localStorage.getItem('junfeng_crm_admin_token')||localStorage.getItem('dashboard_admin_token')||'';
   if(!tok) return;
   try{
+    // 若是手動按同步，先觸發 server 向 Render 拉最新資料
+    if(forceRender){
+      await fetch('/api/crm/sync-now',{method:'POST',headers:{'x-admin-token':tok,'Content-Type':'application/json'}}).catch(()=>{});
+    }
     const rs=await fetch('/api/crm/activities',{headers:{'x-admin-token':tok}}).then(r=>r.json());
     if(!rs.ok || !rs.activities) return;
     const local=JSON.parse(localStorage.getItem(ACT_KEY)||'{}');

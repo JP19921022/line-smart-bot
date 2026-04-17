@@ -897,93 +897,79 @@ app.post('/api/crm/data', requireAdmin, (req, res) => {
 // POST /api/crm/activities/batch   → 批次覆寫某客戶的全部記錄（crm.html 本地儲存同步用）
 
 app.get('/api/crm/activities', requireAdmin, async (req, res) => {
-  // ── 讀本機檔案（本機手動新增的記錄）──
   const all = readJson(CRM_ACTIVITIES_FILE, {});
 
-  // ── 建立 lineId / userId → CRM client_id 的映射（支援 list 格式）──
-  function buildUserIdMap() {
-    const crmRaw = readJson(CRM_DATA_FILE, []);
-    const leads  = Array.isArray(crmRaw) ? crmRaw : (crmRaw.leads || []);
+  // 建立 lineId/userId → CRM client_id 映射 (支援 list 格式的 crm_leads.json)
+  function buildMap() {
+    const raw = readJson(CRM_DATA_FILE, []);
+    const leads = Array.isArray(raw) ? raw : (raw.leads || []);
     const map = new Map();
-    for (const lead of leads) {
-      if (lead.lineId) map.set(lead.lineId.trim(), lead.id);
+    for (const l of leads) {
+      if (l.lineId) map.set(l.lineId.trim(), l.id);
     }
-    // contacts.json 補充
-    const contacts = readJson(CONTACTS_FILE, []);
-    for (const c of contacts) {
+    for (const c of readJson(CONTACTS_FILE, [])) {
       if (c.userId && !map.has(c.userId)) {
-        const name = (c.name || '').trim().toLowerCase();
-        const matched = leads.find(l => {
-          const n = (l.name || '').trim().toLowerCase();
-          return n && name && (n.includes(name) || name.includes(n));
-        });
-        if (matched) map.set(c.userId, matched.id);
+        const dn = (c.name||'').trim().toLowerCase();
+        const m = leads.find(l => { const n=(l.name||'').trim().toLowerCase(); return n&&dn&&(n.includes(dn)||dn.includes(n)); });
+        if (m) map.set(c.userId, m.id);
       }
     }
+    console.log('[activities] buildMap 完成，共', map.size, '筆對應');
     return map;
   }
 
-  // ── 合併來源資料到 all 物件 ──
-  function mergeRows(rows, userIdMap) {
+  // 合併資料列到 all
+  function mergeRows(rows, map) {
+    let merged = 0;
     for (const row of rows) {
       let cid = row.client_id || '';
-      if (cid.startsWith('line_')) {
-        const uid = cid.replace(/^line_/, '');
-        cid = userIdMap.get(uid) || cid;
-      }
-      if (row.user_id && (!cid || cid.startsWith('line_'))) {
-        cid = userIdMap.get(row.user_id) || cid;
-      }
-      if (!cid || cid.startsWith('line_')) return; // 無法對應則略過
-      const act = { id: 'sb_' + (row.id || Date.now()), type: '💬 LINE', content: row.content || '', at: row.created_at || row.at };
+      if (cid.startsWith('line_')) { cid = map.get(cid.replace(/^line_/, '')) || cid; }
+      if (row.user_id && (!cid || cid.startsWith('line_'))) { cid = map.get(row.user_id) || cid; }
+      if (!cid || cid.startsWith('line_')) { continue; }
+      const act = { id: 'sb_'+(row.id||Date.now()+Math.random()), type:'💬 LINE', content:row.content||'', at:row.created_at||row.at||new Date().toISOString() };
       if (!Array.isArray(all[cid])) all[cid] = [];
-      if (!all[cid].some(a => a.id === act.id)) all[cid].push(act);
+      if (!all[cid].some(a => a.id === act.id)) { all[cid].push(act); merged++; }
     }
+    console.log('[activities] mergeRows 完成：合併', merged, '/', rows.length, '筆，map 大小', map.size);
   }
 
-  // ── ① 優先：從 Render 的 /admin/line-summaries 拉最新資料 ──
+  // 1. 從 Render 拉摘要（主要來源）
   try {
     const renderRes = await fetch(
       `${RENDER_BASE_URL}/admin/line-summaries?token=${ADMIN_EXPORT_TOKEN}`,
-      { signal: AbortSignal.timeout(8000) }
+      { signal: AbortSignal.timeout(10000) }
     );
     if (renderRes.ok) {
-      const renderData = await renderRes.json();
-      if (Array.isArray(renderData.summaries) && renderData.summaries.length > 0) {
-        const map = buildUserIdMap();
-        mergeRows(renderData.summaries, map);
-        console.log(`[activities] 從 Render 拉取 ${renderData.summaries.length} 筆對話摘要`);
+      const rd = await renderRes.json();
+      if (Array.isArray(rd.summaries) && rd.summaries.length > 0) {
+        console.log('[activities] Render 回傳', rd.summaries.length, '筆');
+        mergeRows(rd.summaries, buildMap());
+      } else {
+        console.log('[activities] Render 回傳 0 筆或格式不符:', JSON.stringify(rd).slice(0,100));
       }
+    } else {
+      console.log('[activities] Render 回應 HTTP', renderRes.status);
     }
-  } catch (e) {
-    console.log('[activities] Render 拉取跳過：', e.message);
-  }
+  } catch (e) { console.log('[activities] Render 拉取失敗:', e.message); }
 
-  // ── ② 備援：本機 Supabase（如果有設定 SUPABASE_URL/KEY）──
+  // 2. 本機 Supabase 備援
   if (supabase) {
     try {
-      const { data: rows, error } = await supabase
-        .from('interaction_logs')
-        .select('id, client_id, user_id, type, content, created_at')
-        .eq('type', '💬 LINE')
-        .order('created_at', { ascending: false })
-        .limit(500);
-      if (!error && Array.isArray(rows) && rows.length > 0) {
-        const map = buildUserIdMap();
-        mergeRows(rows, map);
-        console.log(`[activities] Supabase 補充 ${rows.length} 筆`);
-      }
-    } catch (e) {
-      console.error('[activities] Supabase 失敗：', e.message);
-    }
+      const { data: rows, error } = await supabase.from('interaction_logs')
+        .select('id,client_id,user_id,type,content,created_at').eq('type','💬 LINE')
+        .order('created_at',{ascending:false}).limit(500);
+      if (!error && Array.isArray(rows) && rows.length > 0) mergeRows(rows, buildMap());
+    } catch(e) { console.error('[activities] Supabase 失敗:', e.message); }
   }
 
-  // ── 排序 ──
+  // 排序
   for (const cid of Object.keys(all)) {
-    all[cid].sort((a, b) => new Date(b.at) - new Date(a.at));
-    if (all[cid].length > 200) all[cid] = all[cid].slice(0, 200);
+    all[cid].sort((a,b) => new Date(b.at)-new Date(a.at));
+    if (all[cid].length > 200) all[cid] = all[cid].slice(0,200);
   }
 
+  const total = Object.values(all).reduce((s,a)=>s+a.length,0);
+  console.log('[activities] 最終回傳：', Object.keys(all).length, '位客戶，', total, '筆活動');
   res.json({ ok: true, activities: all });
 });
 
@@ -1010,6 +996,61 @@ app.post('/api/crm/activities', requireAdmin, (req, res) => {
     writeJson(CRM_ACTIVITIES_FILE, all);
   }
   res.json({ ok: true, clientId, activityId: act.id, duplicate: alreadyExists });
+});
+
+// POST /api/crm/sync-now — 手動觸發從 Render 拉摘要並寫入 crm_activities.json
+app.post('/api/crm/sync-now', requireAdmin, async (req, res) => {
+  const https = require('https');
+  function fetchJson(url) {
+    return new Promise((resolve, reject) => {
+      https.get(url, { timeout: 15000 }, (r) => {
+        let d = '';
+        r.on('data', c => d += c);
+        r.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { reject(e); } });
+      }).on('error', reject).on('timeout', () => reject(new Error('timeout')));
+    });
+  }
+  try {
+    const url = `${RENDER_BASE_URL}/admin/line-summaries?token=${ADMIN_EXPORT_TOKEN}`;
+    const data = await fetchJson(url);
+    const summaries = data.summaries || [];
+
+    const crmRaw = readJson(CRM_DATA_FILE, []);
+    const leads  = Array.isArray(crmRaw) ? crmRaw : (crmRaw.leads || []);
+    const map = new Map();
+    for (const l of leads) { if (l.lineId) map.set(l.lineId.trim(), l.id); }
+    for (const c of readJson(CONTACTS_FILE, [])) {
+      if (c.userId && !map.has(c.userId)) {
+        const dn = (c.name||'').trim().toLowerCase();
+        const m = leads.find(l => { const n=(l.name||'').trim().toLowerCase(); return n&&dn&&(n.includes(dn)||dn.includes(n)); });
+        if (m) map.set(c.userId, m.id);
+      }
+    }
+
+    const all = readJson(CRM_ACTIVITIES_FILE, {});
+    let merged = 0;
+    for (const row of summaries) {
+      let cid = row.client_id || '';
+      if (cid.startsWith('line_')) { cid = map.get(cid.replace(/^line_/, '')) || cid; }
+      if (row.user_id && (!cid || cid.startsWith('line_'))) { cid = map.get(row.user_id) || cid; }
+      if (!cid || cid.startsWith('line_')) continue;
+      const act = { id:'sb_'+(row.id||Date.now()+Math.random()), type:'💬 LINE', content:row.content||'', at:row.created_at||new Date().toISOString() };
+      if (!Array.isArray(all[cid])) all[cid] = [];
+      if (!all[cid].some(a => a.id === act.id)) { all[cid].push(act); merged++; }
+    }
+    for (const cid of Object.keys(all)) {
+      all[cid].sort((a,b) => new Date(b.at)-new Date(a.at));
+      if (all[cid].length > 200) all[cid] = all[cid].slice(0,200);
+    }
+    fs.mkdirSync(path.dirname(CRM_ACTIVITIES_FILE), { recursive: true });
+    writeJson(CRM_ACTIVITIES_FILE, all);
+    const total = Object.values(all).reduce((s,a)=>s+a.length,0);
+    console.log(`[sync-now] 同步完成：${merged} 筆新增，共 ${total} 筆`);
+    res.json({ ok:true, merged, total, customers: Object.keys(all).length });
+  } catch(e) {
+    console.error('[sync-now] 失敗:', e.message);
+    res.json({ ok:false, error: e.message });
+  }
 });
 
 app.post('/api/crm/activities/batch', requireAdmin, (req, res) => {
