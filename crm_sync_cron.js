@@ -162,10 +162,28 @@ async function runSync() {
   console.log(`  ✅ 同步完成：${merged} 筆新增，${skipped} 筆待配對，共 ${total} 筆（${Object.keys(all).length} 位客戶）`);
 }
 
+// ── Keep-alive：每 10 分鐘 ping Render，讓它永不睡覺 ──────────────
+const RENDER_BASE = process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com';
+function keepAlive() {
+  https.get(RENDER_BASE + '/health', { timeout: 10000 }, (res) => {
+    const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+    console.log(`[${now}] 💓 Keep-alive ping → Render HTTP ${res.statusCode}`);
+    res.resume();
+  }).on('error', (e) => {
+    const now = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+    console.warn(`[${now}] 💓 Keep-alive 失敗: ${e.message}`);
+  }).on('timeout', function() { this.destroy(); });
+}
+
 // 立即執行一次
 runSync().catch(console.error);
+keepAlive();
 
-// 之後每 30 分鐘執行一次（pm2 cron 模式下其實不會到這裡，但手動執行時有用）
+// 之後每 10 分鐘 ping Render（讓它永不睡覺）
+setInterval(keepAlive, 10 * 60 * 1000);
+console.log('💓 Keep-alive 已啟動，每 10 分鐘 ping Render 保持在線');
+
+// 每 30 分鐘同步一次 CRM 摘要（pm2 cron 模式下另由排程處理）
 if (process.env.NODE_ENV !== 'cron') {
   setInterval(() => runSync().catch(console.error), 30 * 60 * 1000);
   console.log('⏰ 自動同步已啟動，每 30 分鐘執行一次');
