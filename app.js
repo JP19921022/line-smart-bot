@@ -396,12 +396,40 @@ async function _replyWithClaude(prompt, messages) {
   return response?.content?.[0]?.text?.trim() || null;
 }
 
-async function _replyWithGemini(prompt) {
+async function _replyWithGemini(prompt, messages) {
   if (!genAI) return null;
   const model = genAI.getGenerativeModel({
     model: GEMINI_MODEL,
     systemInstruction: personaInstruction,
   });
+
+  // 若有對話歷史，使用 startChat() 保持記憶（Gemini 需要 user/model 交替格式）
+  const historyMsgs = (messages || []).slice(0, -1); // 排除最後一則（當前問題）
+  if (historyMsgs.length > 0) {
+    // 轉換格式：assistant → model
+    const geminiHistory = [];
+    let lastRole = null;
+    for (const m of historyMsgs) {
+      const role = m.role === 'assistant' ? 'model' : 'user';
+      if (role === lastRole) continue; // 跳過連續同角色（Gemini 要求嚴格交替）
+      geminiHistory.push({ role, parts: [{ text: m.content }] });
+      lastRole = role;
+    }
+    // 必須以 user 開頭
+    while (geminiHistory.length > 0 && geminiHistory[0].role !== 'user') {
+      geminiHistory.shift();
+    }
+    if (geminiHistory.length > 0) {
+      try {
+        const chat = model.startChat({ history: geminiHistory });
+        const result = await chat.sendMessage(prompt);
+        return result?.response?.text()?.trim() || null;
+      } catch (e) {
+        console.error('[Gemini] startChat 失敗，fallback generateContent:', e.message);
+      }
+    }
+  }
+  // fallback：無歷史或 startChat 失敗
   const result = await model.generateContent(prompt);
   return result?.response?.text()?.trim() || null;
 }
@@ -427,12 +455,12 @@ async function getAssistantReply(event, rawText) {
     try { textResponse = await _replyWithClaude(prompt, messages); }
     catch (e) { console.error('Claude 失敗，切換 Gemini：', e.message); }
     if (!textResponse) {
-      try { textResponse = await _replyWithGemini(prompt); }
+      try { textResponse = await _replyWithGemini(prompt, messages); }
       catch (e) { console.error('Gemini fallback 失敗：', e.message); }
     }
   } else {
     // 簡單：先用 Gemini，失敗才 fallback Claude
-    try { textResponse = await _replyWithGemini(prompt); }
+    try { textResponse = await _replyWithGemini(prompt, messages); }
     catch (e) { console.error('Gemini 失敗，切換 Claude：', e.message); }
     if (!textResponse) {
       try { textResponse = await _replyWithClaude(prompt, messages); }
