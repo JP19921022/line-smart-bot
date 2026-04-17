@@ -5,6 +5,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const Database = require('better-sqlite3');
 const { ensureFile: ensureAbEventStore, getStatsByVariant, DEFAULT_EVENT_FILE } = require('../ab_event_store');
+const supabase = require('../supabaseClient'); // Supabase 用於拉對話紀錄
 
 const app = express();
 app.use(express.json({ limit: '30mb' }));
@@ -895,8 +896,86 @@ app.post('/api/crm/data', requireAdmin, (req, res) => {
 // POST /api/crm/activities         → 新增單筆互動記錄（LINE Bot 呼叫此 endpoint）
 // POST /api/crm/activities/batch   → 批次覆寫某客戶的全部記錄（crm.html 本地儲存同步用）
 
-app.get('/api/crm/activities', requireAdmin, (req, res) => {
+app.get('/api/crm/activities', requireAdmin, async (req, res) => {
+  // ── 讀本機檔案（本機手動新增的記錄）──
   const all = readJson(CRM_ACTIVITIES_FILE, {});
+
+  // ── 同時從 Supabase 拉 LINE 對話摘要 ──
+  if (supabase) {
+    try {
+      const { data: rows, error } = await supabase
+        .from('interaction_logs')
+        .select('id, client_id, user_id, display_name, type, content, created_at')
+        .eq('type', '💬 LINE')
+        .order('created_at', { ascending: false })
+        .limit(500);
+
+      if (!error && Array.isArray(rows) && rows.length > 0) {
+        // 讀取本機 contacts.json，建立 userId → CRM client_id 的映射
+        const contacts = readJson(CONTACTS_FILE, []);
+        const crmData  = readJson(CRM_DATA_FILE, {});
+        const leads    = Array.isArray(crmData.leads) ? crmData.leads : [];
+
+        // userId → CRM lead.id 映射（lineId 欄位）
+        const userIdToCrmId = new Map();
+        for (const lead of leads) {
+          if (lead.lineId) userIdToCrmId.set(lead.lineId.trim(), lead.id);
+        }
+        // contacts.json 也可提供 userId
+        for (const c of contacts) {
+          if (c.userId && !userIdToCrmId.has(c.userId)) {
+            // 嘗試用姓名匹配 CRM lead
+            const name = (c.name || '').trim().toLowerCase();
+            const matched = leads.find(l => {
+              const n = (l.name || '').trim().toLowerCase();
+              return n && name && (n.includes(name) || name.includes(n));
+            });
+            if (matched) userIdToCrmId.set(c.userId, matched.id);
+          }
+        }
+
+        for (const row of rows) {
+          // 決定要存在哪個 clientId key
+          let cid = row.client_id || '';
+          // 如果 client_id 是 line_Uxxxx 格式，嘗試換成真實 CRM id
+          if (cid.startsWith('line_')) {
+            const userId = cid.replace(/^line_/, '');
+            const realId = userIdToCrmId.get(userId);
+            if (realId) cid = realId;
+          }
+          // 也試 user_id 直接映射
+          if (row.user_id && (!cid || cid.startsWith('line_'))) {
+            const realId = userIdToCrmId.get(row.user_id);
+            if (realId) cid = realId;
+          }
+          if (!cid) continue;
+
+          const act = {
+            id:      'sb_' + row.id,
+            type:    '💬 LINE',
+            content: row.content || '',
+            at:      row.created_at,
+          };
+          if (!Array.isArray(all[cid])) all[cid] = [];
+          // 去重（避免 id 重複）
+          if (!all[cid].some(a => a.id === act.id)) {
+            all[cid].push(act);
+          }
+        }
+
+        // 每位客戶依時間排序（最新在前）
+        for (const cid of Object.keys(all)) {
+          all[cid].sort((a, b) => new Date(b.at) - new Date(a.at));
+          if (all[cid].length > 200) all[cid] = all[cid].slice(0, 200);
+        }
+
+        console.log(`[activities] 本機 + Supabase 合併：${rows.length} 筆 LINE 紀錄`);
+      }
+    } catch (e) {
+      console.error('[activities] Supabase 拉取失敗：', e.message);
+    }
+  }
+
   res.json({ ok: true, activities: all });
 });
 
