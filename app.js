@@ -124,6 +124,127 @@ if (config.channelSecret) {
   app.post('/webhook', (req, res) => res.status(503).send('LINE webhook not configured'));
 }
 
+// ── 將 ReadableStream 轉為 Buffer ──
+async function streamToBuffer(stream) {
+  const chunks = [];
+  for await (const chunk of stream) {
+    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks);
+}
+
+// ── 圖片訊息處理（Gemini Vision + Claude Vision fallback）──
+async function handleImageMessage(event) {
+  const userId = event?.source?.userId;
+  const displayName = await fetchDisplayName(event?.source);
+  await showTypingIndicator(event.source);
+  try {
+    const stream = await client.getMessageContent(event.message.id);
+    const imgBuf = await streamToBuffer(stream);
+    const base64Image = imgBuf.toString('base64');
+    const mimeType = 'image/jpeg';
+
+    let reply = null;
+    const imagePrompt = '請用繁體中文描述這張圖片。如果是保險文件、保單條款或財務相關內容，請特別幫我整理重點條款、保障項目與注意事項，用白話解讀給客戶聽。';
+
+    // 優先用 Gemini Vision（支援圖片）
+    if (genAI) {
+      try {
+        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: personaInstruction });
+        const result = await model.generateContent([
+          { inlineData: { data: base64Image, mimeType } },
+          imagePrompt,
+        ]);
+        reply = result?.response?.text()?.trim() || null;
+      } catch (e) { console.error('[圖片] Gemini 失敗:', e.message); }
+    }
+    // Fallback：Claude Vision
+    if (!reply && anthropicClient) {
+      try {
+        const response = await anthropicClient.messages.create({
+          model: CLAUDE_MODEL,
+          max_tokens: 2048,
+          system: personaInstruction,
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: mimeType, data: base64Image } },
+            { type: 'text', text: imagePrompt },
+          ]}],
+        });
+        reply = response?.content?.[0]?.text?.trim() || null;
+      } catch (e) { console.error('[圖片] Claude 失敗:', e.message); }
+    }
+    if (reply) {
+      await memoryStore.saveSessionMessage(userId, 'user', '[傳送了一張圖片]');
+      await memoryStore.saveSessionMessage(userId, 'assistant', reply);
+      crmIntegration.trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore).catch(console.error);
+      return client.replyMessage(event.replyToken, buildResponseMessage(reply));
+    }
+  } catch (e) {
+    console.error('[圖片處理] 下載失敗:', e.message);
+  }
+  return client.replyMessage(event.replyToken, buildResponseMessage(
+    '收到你的圖片了！不過我現在解讀圖片遇到一點問題，可以用文字告訴我你想了解什麼嗎？😊'
+  ));
+}
+
+// ── 檔案訊息處理（PDF 優先用 Gemini PDF 原生支援）──
+async function handleFileMessage(event) {
+  const userId = event?.source?.userId;
+  const displayName = await fetchDisplayName(event?.source);
+  const fileName = event.message.fileName || '未知檔案';
+  const fileSize = event.message.fileSize || 0;
+  await showTypingIndicator(event.source);
+
+  const isPDF = fileName.toLowerCase().endsWith('.pdf');
+  if (isPDF) {
+    try {
+      const stream = await client.getMessageContent(event.message.id);
+      const fileBuf = await streamToBuffer(stream);
+      const base64PDF = fileBuf.toString('base64');
+      const pdfPrompt = `用戶傳來了一份保險相關 PDF（${fileName}）。請用繁體中文幫我解讀：1) 這份文件的主要內容 2) 重要保障項目 3) 注意事項或限制條款 4) 用白話整理給客戶。`;
+
+      let reply = null;
+      // Gemini 原生支援 PDF inline（< 20MB）
+      if (genAI && fileSize < 20 * 1024 * 1024) {
+        try {
+          const model = genAI.getGenerativeModel({ model: GEMINI_MODEL, systemInstruction: personaInstruction });
+          const result = await model.generateContent([
+            { inlineData: { data: base64PDF, mimeType: 'application/pdf' } },
+            pdfPrompt,
+          ]);
+          reply = result?.response?.text()?.trim() || null;
+        } catch (e) { console.error('[PDF] Gemini 失敗:', e.message); }
+      }
+      // Fallback：嘗試提取純文字後丟給 Claude
+      if (!reply && anthropicClient) {
+        try {
+          const rawText = fileBuf.toString('latin1').replace(/[^\x20-\x7E\u4E00-\u9FFF\u3000-\u303F\uFF00-\uFFEF]/g, ' ').replace(/\s+/g, ' ').slice(0, 4000);
+          if (rawText.trim().length > 50) {
+            const textPrompt = `用戶傳來了一份 PDF（${fileName}），以下是提取的文字：\n\n${rawText}\n\n請用繁體中文解讀重點。`;
+            reply = await _replyWithClaude(textPrompt, [{ role: 'user', content: textPrompt }]);
+          }
+        } catch (e) { console.error('[PDF] 文字提取失敗:', e.message); }
+      }
+      if (reply) {
+        await memoryStore.saveSessionMessage(userId, 'user', `[傳送了PDF: ${fileName}]`);
+        await memoryStore.saveSessionMessage(userId, 'assistant', reply);
+        crmIntegration.trackAndMaybeSummarize(userId, displayName, anthropicClient, memoryStore).catch(console.error);
+        return client.replyMessage(event.replyToken, buildResponseMessage(reply));
+      }
+    } catch (e) {
+      console.error('[PDF處理] 下載失敗:', e.message);
+    }
+    return client.replyMessage(event.replyToken, buildResponseMessage(
+      `收到你的 PDF《${fileName}》了！你可以把想了解的頁面截圖或拍照傳給我，我來幫你用白話解讀 📄`
+    ));
+  }
+
+  // 非 PDF 檔案
+  return client.replyMessage(event.replyToken, buildResponseMessage(
+    `收到你的檔案《${fileName}》了！如果是保單或合約類文件，可以截圖或拍照傳給我，我幫你解讀重點 😊`
+  ));
+}
+
 async function handleEvent(event) {
   logUserSource(event);
   if (event.type === 'postback') {
@@ -133,7 +254,19 @@ async function handleEvent(event) {
     }
     return client.replyMessage(event.replyToken, response);
   }
-  if (event.type !== 'message' || event.message.type !== 'text') {
+  if (event.type !== 'message') {
+    return Promise.resolve(null);
+  }
+  // 圖片訊息
+  if (event.message.type === 'image') {
+    return handleImageMessage(event);
+  }
+  // 檔案訊息（PDF 等）
+  if (event.message.type === 'file') {
+    return handleFileMessage(event);
+  }
+  // 貼圖 / 其他非文字訊息 → 忽略
+  if (event.message.type !== 'text') {
     return Promise.resolve(null);
   }
 
