@@ -10,6 +10,8 @@ const proactivePush = require('./proactivePush');
 const crmIntegration = require('./crmIntegration');
 const { getLatestFundEntries } = require('./fundFetcher');
 const { ensureFile: ensureAbEventStore, markLatestUnrepliedAsReplied } = require('./ab_event_store');
+const contactsBuffer = require('./contactsBuffer');
+contactsBuffer.schedule();
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -2244,36 +2246,11 @@ function setManualMode(userId, enabled) {
 }
 
 function upsertContactFromEvent(event) {
+  // ❗ 改走 contactsBuffer：把「userId=X 剛互動」這件事記在記憶體，
+  // 背景 30s 或滿 100 筆才 flush 到 contacts.json。
+  // 舊版每則訊息同步 writeFileSync 會阻塞 event loop，也容易互相蓋欄位。
   try {
-    const userId = event?.source?.userId;
-    if (!userId) return;
-
-    const file = path.join(__dirname, 'contacts.json');
-    let contacts = [];
-    if (fs.existsSync(file)) {
-      contacts = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (!Array.isArray(contacts)) contacts = [];
-    }
-
-    const now = new Date().toISOString();
-    const idx = contacts.findIndex(c => c.userId === userId);
-
-    if (idx >= 0) {
-      contacts[idx].last_contact_at = now;
-      if (contacts[idx].enabled === undefined) contacts[idx].enabled = true;
-      if (!contacts[idx].name) contacts[idx].name = '未命名客戶';
-    } else {
-      contacts.push({
-        userId,
-        name: '新客戶',
-        last_contact_at: now,
-        last_care_at: null,
-        enabled: true
-      });
-    }
-
-    fs.writeFileSync(file, JSON.stringify(contacts, null, 2), 'utf8');
-    console.log(`[CAPTURE] userId=${userId} updated at ${now}`);
+    contactsBuffer.upsertEvent(event);
   } catch (e) {
     console.error('upsertContactFromEvent error:', e);
   }

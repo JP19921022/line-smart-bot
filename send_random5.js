@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const { runJob } = require('./scripts/alert');
 
 const TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN;
 const CONTACTS_FILE = path.join(__dirname, 'contacts.json');
@@ -144,12 +145,15 @@ function countTodaySentFromLog(today) {
   }
 }
 
-async function pushText(to, text, mediaUrl = '', mediaType = '', flexJson = '') {
+async function pushText(to, text, mediaUrl = '', mediaType = '', flexJson = '', mediaPreviewUrl = '') {
   let messages = [{ type: 'text', text }];
   if (flexJson) {
     try { messages = [JSON.parse(flexJson)]; } catch {}
   } else if (mediaUrl && mediaType === 'image') {
     messages.push({ type: 'image', originalContentUrl: mediaUrl, previewImageUrl: mediaUrl });
+  } else if (mediaUrl && mediaType === 'video') {
+    const preview = mediaPreviewUrl || mediaUrl;
+    messages.push({ type: 'video', originalContentUrl: mediaUrl, previewImageUrl: preview });
   } else if (mediaUrl && mediaType) {
     messages[0].text = `${text}\n${mediaUrl}`;
   }
@@ -166,7 +170,7 @@ async function pushText(to, text, mediaUrl = '', mediaType = '', flexJson = '') 
   return { ok: r.ok, status: r.status, body };
 }
 
-(async () => {
+runJob('send_random5', async () => {
   if (!TOKEN) throw new Error('LINE_CHANNEL_ACCESS_TOKEN missing');
   if (!fs.existsSync(CONTACTS_FILE)) throw new Error('contacts.json not found');
   if (!fs.existsSync(BANK_FILE)) throw new Error('care_messages.json not found');
@@ -184,6 +188,9 @@ async function pushText(to, text, mediaUrl = '', mediaType = '', flexJson = '') 
     ? Buffer.from(process.env.CARE_MEDIA_URL_B64, 'base64').toString('utf8')
     : (process.env.CARE_MEDIA_URL || '').trim();
   const mediaType = (process.env.CARE_MEDIA_TYPE || '').trim();
+  const mediaPreviewUrl = process.env.CARE_MEDIA_PREVIEW_URL_B64
+    ? Buffer.from(process.env.CARE_MEDIA_PREVIEW_URL_B64, 'base64').toString('utf8')
+    : (process.env.CARE_MEDIA_PREVIEW_URL || '').trim();
   const flexJson = process.env.CARE_FLEX_B64
     ? Buffer.from(process.env.CARE_FLEX_B64, 'base64').toString('utf8')
     : (process.env.CARE_FLEX_JSON || '').trim();
@@ -242,7 +249,7 @@ async function pushText(to, text, mediaUrl = '', mediaType = '', flexJson = '') 
     }
 
     const variant = pickVariant(c.userId, abTest);
-    const rs = await pushText(c.userId, msg, mediaUrl, mediaType, flexJsonForUser);
+    const rs = await pushText(c.userId, msg, mediaUrl, mediaType, flexJsonForUser, mediaPreviewUrl);
 
     if (rs.ok) {
       ok++;
@@ -272,9 +279,9 @@ async function pushText(to, text, mediaUrl = '', mediaType = '', flexJson = '') 
   fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8');
   log(`DONE today=${today} ok=${ok} fail=${fail} candidates=${candidates.length} pickCount=${pickCount} cap=${cap} sentToday=${sentToday}`);
   if (ok === 0 && fail > 0) {
-    console.error(`❌ done-with-fail: today=${today}, ok=${ok}, fail=${fail}`);
-    process.exitCode = 1;
+    // 全部送不出去：當成錯誤丟，讓 runJob 送 LINE 告警
+    throw new Error(`send_random5: all pushes failed (today=${today}, fail=${fail}, candidates=${candidates.length})`);
   } else {
     console.log(`✅ done: today=${today}, ok=${ok}, fail=${fail}, candidates=${candidates.length}, pickCount=${pickCount}, cap=${cap}, sentToday=${sentToday}`);
   }
-})();
+});
