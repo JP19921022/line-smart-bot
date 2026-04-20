@@ -6,6 +6,7 @@ const { exec } = require('child_process');
 const Database = require('better-sqlite3');
 const { ensureFile: ensureAbEventStore, getStatsByVariant, DEFAULT_EVENT_FILE } = require('../ab_event_store');
 const supabase = require('../supabaseClient'); // Supabase 用於拉對話紀錄
+const linePush = require('../linePushHelper'); // 共用 LINE push 工具（審核佇列 / 手動廣播）
 
 const app = express();
 app.use(express.json({ limit: '30mb' }));
@@ -35,7 +36,26 @@ const SURVEY_RESPONSES_FILE = path.join(ROOT, 'survey_responses.json');
 const OA_MANUAL_LOG_FILE = path.join(LOG_DIR, 'oa_manual_broadcast.jsonl');
 const RENDER_BASE_URL = process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com';
 const PUBLIC_MEDIA_BASE_URL = process.env.PUBLIC_MEDIA_BASE_URL || '';
-const ADMIN_EXPORT_TOKEN = process.env.ADMIN_EXPORT_TOKEN || '9be202464d61893592d114323d863068d8d07a8e2aa8f42a';
+
+// Admin export token（用來跟 Render 拉資料）讀取順序：
+// 1) 環境變數 ADMIN_EXPORT_TOKEN
+// 2) 本機檔案 <ROOT>/dashboard/.admin_export_token（不進版控）
+// 都沒有就 warn + 設 null，相關端點會自行跳過。不再硬寫在源碼。
+const ADMIN_EXPORT_TOKEN_FILE = path.join(ROOT, 'dashboard', '.admin_export_token');
+function loadAdminExportToken() {
+  if (process.env.ADMIN_EXPORT_TOKEN) return process.env.ADMIN_EXPORT_TOKEN.trim();
+  try {
+    if (fs.existsSync(ADMIN_EXPORT_TOKEN_FILE)) {
+      const t = fs.readFileSync(ADMIN_EXPORT_TOKEN_FILE, 'utf8').trim();
+      if (t) return t;
+    }
+  } catch (_) {}
+  return null;
+}
+const ADMIN_EXPORT_TOKEN = loadAdminExportToken();
+if (!ADMIN_EXPORT_TOKEN) {
+  console.warn(`[WARN] ADMIN_EXPORT_TOKEN 未設定（env 或 ${ADMIN_EXPORT_TOKEN_FILE} 都沒有），Render 同步相關端點將無法使用。`);
+}
 
 const DEFAULT_RULES = {
   pickCount: 5,
@@ -1082,7 +1102,7 @@ app.get('/api/top-responders', requireAdmin, async (req, res) => {
 
   let source = local;
   try {
-    const tokenCandidates = [ADMIN_EXPORT_TOKEN, '9be202464d61893592d114323d863068d8d07a8e2aa8f42a'];
+    const tokenCandidates = [ADMIN_EXPORT_TOKEN].filter(Boolean);
     for (const tk of tokenCandidates) {
       if (!tk) continue;
       const r = await fetch(`${RENDER_BASE_URL}/admin/contacts/export?token=${tk}`, {
@@ -1154,7 +1174,7 @@ app.get('/api/contacts-live', requireAdmin, async (req, res) => {
 
   // 嘗試從 Render 補充額外聯絡人（不覆蓋本機資料）
   try {
-    const tokenCandidates = [ADMIN_EXPORT_TOKEN, '9be202464d61893592d114323d863068d8d07a8e2aa8f42a'];
+    const tokenCandidates = [ADMIN_EXPORT_TOKEN].filter(Boolean);
     for (const tk of tokenCandidates) {
       if (!tk) continue;
       const r = await fetch(`${RENDER_BASE_URL}/admin/contacts/export?token=${tk}`, {
@@ -1528,13 +1548,186 @@ app.get('/api/stream', requireAdmin, (req, res) => {
   req.on('close', () => clearInterval(timer));
 });
 
+// ──────────────────────────────────────────────
+// Tier-2 #6  敏感詞審核佇列 API
+// ──────────────────────────────────────────────
+// 列出待審核 + 最近已處理的（給 dashboard 顯示用）
+app.get('/api/approval-queue', requireAdmin, async (req, res) => {
+  if (!supabase) return res.status(503).json({ ok: false, error: 'supabase-unavailable' });
+  try {
+    const status = String(req.query.status || 'pending');
+    const limit  = Math.min(Number(req.query.limit || 50), 200);
+    let q = supabase.from('approval_queue').select('*').order('created_at', { ascending: false }).limit(limit);
+    if (status && status !== 'all') q = q.eq('status', status);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, rows: data || [] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 核可送出（可選 finalReply：改寫過的版本）
+app.post('/api/approval-queue/:id/approve', requireAdmin, async (req, res) => {
+  if (!supabase) return res.status(503).json({ ok: false, error: 'supabase-unavailable' });
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: 'bad-id' });
+
+  const finalReply = (req.body?.finalReply || '').toString().trim();
+
+  try {
+    // 1) 原子領取：pending → approved
+    const { data: claimed, error: e1 } = await supabase
+      .from('approval_queue')
+      .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+      .eq('id', id).eq('status', 'pending').select().single();
+    if (e1 || !claimed) {
+      return res.status(409).json({ ok: false, error: 'already-reviewed-or-not-found' });
+    }
+    const textToSend = finalReply || claimed.draft_reply || '';
+    if (!textToSend) {
+      await supabase.from('approval_queue').update({ status: 'rejected', last_error: 'empty reply' }).eq('id', id);
+      return res.status(400).json({ ok: false, error: 'empty-reply' });
+    }
+
+    // 2) 送 LINE push
+    const pr = await linePush.pushText(claimed.user_id, textToSend);
+    if (!pr.ok) {
+      await supabase.from('approval_queue').update({
+        status: 'failed',
+        last_error: `push failed: ${pr.reason || pr.status}`
+      }).eq('id', id);
+      return res.status(502).json({ ok: false, error: 'line-push-failed', detail: pr });
+    }
+
+    // 3) 標記 sent
+    await supabase.from('approval_queue').update({
+      status: 'sent',
+      final_reply: finalReply || null,
+      sent_at: new Date().toISOString()
+    }).eq('id', id);
+
+    res.json({ ok: true, id, sent: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 拒絕（不送任何東西給客戶）
+app.post('/api/approval-queue/:id/reject', requireAdmin, async (req, res) => {
+  if (!supabase) return res.status(503).json({ ok: false, error: 'supabase-unavailable' });
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: 'bad-id' });
+  const reason = (req.body?.reason || '').toString().slice(0, 500);
+  try {
+    const { error } = await supabase
+      .from('approval_queue')
+      .update({
+        status: 'rejected',
+        reviewed_at: new Date().toISOString(),
+        last_error: reason || null
+      })
+      .eq('id', id).eq('status', 'pending');
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, id });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// ──────────────────────────────────────────────
+// Tier-2 #6  手動廣播 API
+// ──────────────────────────────────────────────
+// body: { message: '...', userIds?: [...], segment?: 'all'|'enabled' }
+// 若沒給 userIds，依 segment 從 contacts.json 挑：
+//   all     → 所有有 userId 的
+//   enabled → 只有 enabled !== false 的（預設）
+app.post('/api/manual-broadcast', requireAdmin, async (req, res) => {
+  try {
+    const message = String(req.body?.message || '').trim();
+    const segment = String(req.body?.segment || 'enabled').trim();
+    const explicitIds = Array.isArray(req.body?.userIds) ? req.body.userIds.filter(Boolean) : null;
+
+    if (!message) return res.status(400).json({ ok: false, error: 'message required' });
+    if (message.length > 4500) return res.status(400).json({ ok: false, error: 'message too long (LINE 5000 char limit)' });
+
+    // 組 target 清單
+    let targets = [];
+    if (explicitIds && explicitIds.length > 0) {
+      targets = explicitIds.map(String);
+    } else {
+      const contacts = readJson(CONTACTS_FILE, []);
+      targets = contacts
+        .filter(c => c && c.userId)
+        .filter(c => segment === 'all' ? true : (c.enabled !== false))
+        .map(c => c.userId);
+    }
+
+    if (targets.length === 0) return res.status(400).json({ ok: false, error: 'no targets' });
+    if (targets.length > 500)  return res.status(400).json({ ok: false, error: 'too many targets (>500), split batch' });
+
+    if (!linePush.loadToken()) {
+      return res.status(503).json({ ok: false, error: 'LINE_CHANNEL_ACCESS_TOKEN missing' });
+    }
+
+    // 逐一 push（LINE 有 rate limit，不 parallel）
+    const result = await linePush.pushTextToMany(targets, message);
+
+    // 寫進既有的 oa_manual_broadcast 稽核 log
+    try {
+      fs.mkdirSync(path.dirname(OA_MANUAL_LOG_FILE), { recursive: true });
+      fs.appendFileSync(OA_MANUAL_LOG_FILE, JSON.stringify({
+        source:   'manual-broadcast',
+        segment,
+        message,
+        targets:  targets.length,
+        ok:       result.ok,
+        fail:     result.fail,
+        sentAt:   new Date().toISOString()
+      }) + '\n', 'utf8');
+    } catch (_) {}
+
+    res.json({
+      ok: true,
+      total: targets.length,
+      sent:   result.ok,
+      failed: result.fail,
+      results: (result.results || []).slice(0, 50)   // 前 50 筆做失敗排查；避免回太大
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 預覽將要發送給幾位（不實際送）
+// ?segment=all|enabled
+app.get('/api/manual-broadcast/preview', requireAdmin, (req, res) => {
+  try {
+    const segment = String(req.query.segment || 'enabled').trim();
+    const contacts = readJson(CONTACTS_FILE, []);
+    const count = contacts
+      .filter(c => c && c.userId)
+      .filter(c => segment === 'all' ? true : (c.enabled !== false))
+      .length;
+    res.json({ ok: true, segment, count });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
 const PORT = process.env.DASHBOARD_PORT || 3977;
-// 監聽 0.0.0.0 使區域網路（iPhone 同 WiFi）也能存取
-app.listen(PORT, '0.0.0.0', () => {
+// 預設只綁 127.0.0.1（桌面 App 用）。
+// 若需要讓同網段的 iPhone 存取，啟動前 export DASHBOARD_HOST=0.0.0.0
+const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => {
   const os = require('os');
   const localIp = Object.values(os.networkInterfaces())
     .flat().find(i => i.family === 'IPv4' && !i.internal)?.address || '(查不到IP)';
-  console.log(`Dashboard running: http://127.0.0.1:${PORT}`);
-  console.log(`📱 iPhone 存取網址: http://${localIp}:${PORT}`);
+  console.log(`Dashboard running: http://127.0.0.1:${PORT}  (bind: ${HOST})`);
+  if (HOST === '0.0.0.0') {
+    console.log(`📱 iPhone 存取網址: http://${localIp}:${PORT}  ⚠️ 服務已對外開放，注意網路安全`);
+  } else {
+    console.log(`📱 需要 iPhone 同 WiFi 存取？啟動前加  DASHBOARD_HOST=0.0.0.0`);
+  }
   console.log(`Admin token file: ${ADMIN_TOKEN_FILE}`);
 });

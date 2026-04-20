@@ -12,6 +12,7 @@ const { getLatestFundEntries } = require('./fundFetcher');
 const { ensureFile: ensureAbEventStore, markLatestUnrepliedAsReplied } = require('./ab_event_store');
 const contactsBuffer = require('./contactsBuffer');
 contactsBuffer.schedule();
+const approvalQueue = require('./approvalQueue');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -325,6 +326,27 @@ async function handleEvent(event) {
 
   await showTypingIndicator(event.source);
   const replyText = await getAssistantReply(event, userText);
+
+  // Tier-2 #6：敏感詞（理賠 / 退保 / 客訴 / 投訴 …）進審核佇列，
+  // 不直接送 AI 草稿，改回一則安全的佔位訊息，管理員到 dashboard 審核後再 push。
+  try {
+    const displayName = await fetchDisplayName(event?.source).catch(() => '');
+    const held = await approvalQueue.maybeHold({
+      event,
+      userText,
+      draftReply: replyText,
+      displayName
+    });
+    if (held && held.held) {
+      return client.replyMessage(
+        event.replyToken,
+        buildResponseMessage('您的訊息我們已收到，會由專員儘快親自回覆您，謝謝。')
+      );
+    }
+  } catch (e) {
+    console.error('[approvalQueue] maybeHold failed, fall through to normal reply:', e && e.message);
+  }
+
   return client.replyMessage(event.replyToken, buildResponseMessage(replyText));
 }
 

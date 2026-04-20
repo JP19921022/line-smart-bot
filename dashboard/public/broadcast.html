@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>雋鋒保經 — 手動廣播 / 審核佇列</title>
+<style>
+  :root{
+    --bg:#0B0E14; --panel:#141824; --panel2:#1A1F2E;
+    --line:#262B3A; --line2:#313749;
+    --text:#E6E8EF; --muted:#8A93A6; --muted2:#5C6474;
+    --accent:#7C5CFF; --accent2:#A78BFA;
+    --ok:#22C55E; --warn:#F59E0B; --err:#EF4444;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  header{position:sticky;top:0;background:rgba(11,14,20,.92);backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);padding:14px 20px;z-index:10;
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header .sp{flex:1}
+  header nav a{margin-left:14px;color:var(--muted);font-size:13px}
+  header nav a:hover{color:var(--text)}
+  .wrap{max-width:1080px;margin:0 auto;padding:20px}
+  .tabs{display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--line)}
+  .tab{padding:10px 16px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;
+    font-size:14px;user-select:none}
+  .tab.active{color:var(--text);border-color:var(--accent)}
+  .tab:hover{color:var(--text)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:16px}
+  .panel h2{font-size:15px;margin:0 0 12px 0;font-weight:600;color:var(--text)}
+  .panel .hint{color:var(--muted);font-size:12px;line-height:1.6;margin-bottom:12px}
+  label{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+  input[type=text],input[type=password],textarea,select{
+    width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--line2);
+    border-radius:8px;padding:10px 12px;font-size:14px;
+    font-family:inherit;outline:none}
+  input:focus,textarea:focus,select:focus{border-color:var(--accent)}
+  textarea{min-height:100px;resize:vertical;line-height:1.5}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .row > *{flex:1;min-width:180px}
+  .btn{display:inline-block;background:var(--accent);color:#fff;border:none;
+    padding:9px 16px;border-radius:8px;font-size:13px;cursor:pointer;
+    font-weight:500;transition:opacity .15s}
+  .btn:hover{opacity:.9}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--line2);color:var(--text)}
+  .btn.ghost:hover{background:var(--panel2)}
+  .btn.danger{background:var(--err)}
+  .btn.ok{background:var(--ok)}
+  .btn.sm{padding:6px 10px;font-size:12px}
+  .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .segbar{display:flex;gap:16px;font-size:13px;color:var(--muted)}
+  .segbar label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0;color:var(--text)}
+  .segbar input[type=radio]{margin:0}
+
+  .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.6;
+    background:var(--panel2);border:1px solid var(--line2)}
+  .msg.ok{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08);color:#A7F3C4}
+  .msg.err{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.08);color:#FCA5A5}
+
+  .q-item{background:var(--panel2);border:1px solid var(--line2);border-radius:10px;
+    padding:14px 16px;margin-bottom:12px}
+  .q-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;color:var(--muted)}
+  .q-name{font-size:14px;color:var(--text);font-weight:600}
+  .q-uid{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--muted2);
+    background:var(--panel);padding:2px 6px;border-radius:4px}
+  .q-kw{background:rgba(245,158,11,.15);color:var(--warn);border:1px solid rgba(245,158,11,.3);
+    padding:2px 8px;border-radius:4px;font-size:11px}
+  .q-time{color:var(--muted2);margin-left:auto}
+  .q-inbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;font-size:13px;color:var(--text);line-height:1.6;
+    white-space:pre-wrap;margin-bottom:8px}
+  .q-inbox .tag{color:var(--muted);font-size:11px;display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+  .q-draft{margin-top:8px}
+  .q-draft textarea{min-height:80px;font-size:13px}
+  .empty{text-align:center;color:var(--muted);padding:40px 20px;font-size:14px}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);
+    border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:6px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .count-badge{background:var(--accent);color:#fff;border-radius:10px;padding:1px 8px;font-size:11px;margin-left:6px}
+  .auto-info{font-size:11px;color:var(--muted2);margin-left:8px}
+  .token-bar{display:flex;gap:8px;align-items:center}
+  .token-bar input{flex:1}
+  .hide{display:none}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛡️ 雋鋒保經 — 廣播 / 審核</h1>
+  <div class="sp"></div>
+  <nav>
+    <a href="/index.html">← 回主控台</a>
+    <a href="/crm.html">CRM</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <!-- token -->
+  <div class="panel" id="tokenPanel">
+    <h2>🔑 Admin Token</h2>
+    <div class="hint">此頁面需要 Admin Token 才能操作。Token 可在 <code>~/line-bot/dashboard/.admin_token</code> 找到。</div>
+    <div class="token-bar">
+      <input id="tokenInput" type="password" placeholder="貼上 admin token...">
+      <button class="btn" onclick="saveToken()">儲存</button>
+    </div>
+  </div>
+
+  <!-- tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="approval" onclick="switchTab('approval')">
+      🕒 待審核 <span id="pendingBadge" class="count-badge hide">0</span>
+    </div>
+    <div class="tab" data-tab="broadcast" onclick="switchTab('broadcast')">📣 手動廣播</div>
+    <div class="tab" data-tab="history" onclick="switchTab('history')">📜 審核紀錄</div>
+  </div>
+
+  <!-- ====================  Approval Queue ==================== -->
+  <section id="tab-approval">
+    <div class="panel">
+      <h2>待審核草稿
+        <span class="auto-info">自動每 15 秒更新</span>
+        <button class="btn ghost sm" style="float:right" onclick="loadApproval()">重新整理</button>
+      </h2>
+      <div class="hint">
+        當客戶訊息包含關鍵字（理賠 / 退保 / 客訴 / 投訴 / 申訴 / 取消契約 / 解約）時，
+        AI 草稿會被擋在這裡由人工審核。核可會立刻透過 LINE push 送出給客戶。
+      </div>
+      <div id="approvalList"></div>
+    </div>
+  </section>
+
+  <!-- ====================  Broadcast ==================== -->
+  <section id="tab-broadcast" class="hide">
+    <div class="panel">
+      <h2>手動廣播</h2>
+      <div class="hint">
+        送出後會立即透過 LINE push 逐一發給選定對象。注意 LINE 月度 push 配額，請謹慎使用。
+      </div>
+
+      <label>訊息內容（最多 4500 字）</label>
+      <textarea id="bcMsg" placeholder="要發送的訊息..."></textarea>
+      <div id="bcCount" style="font-size:11px;color:var(--muted);margin-top:4px">0 字</div>
+
+      <label>發送對象</label>
+      <div class="segbar">
+        <label><input type="radio" name="seg" value="enabled" checked> 已啟用（AI 回覆）的客戶</label>
+        <label><input type="radio" name="seg" value="all"> 全部客戶</label>
+        <label><input type="radio" name="seg" value="custom"> 指定 userId</label>
+      </div>
+
+      <div id="bcCustomBox" class="hide" style="margin-top:10px">
+        <label>userId 清單（逗號或換行分隔）</label>
+        <textarea id="bcUids" placeholder="Uxxxxxxxxxxxxxxxx, Uxxxxxxxxxxxxxxxx..."></textarea>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="bcSendBtn" onclick="doBroadcast()">送出廣播</button>
+        <button class="btn ghost" onclick="previewTargets()">預覽對象數</button>
+      </div>
+
+      <div id="bcMsgBox"></div>
+    </div>
+  </section>
+
+  <!-- ====================  History ==================== -->
+  <section id="tab-history" class="hide">
+    <div class="panel">
+      <h2>審核紀錄（近期）
+        <button class="btn ghost sm" style="float:right" onclick="loadHistory()">重新整理</button>
+      </h2>
+      <div class="segbar" style="margin-bottom:12px">
+        <label><input type="radio" name="hstatus" value="sent" checked onchange="loadHistory()"> 已送出</label>
+        <label><input type="radio" name="hstatus" value="rejected" onchange="loadHistory()"> 已拒絕</label>
+        <label><input type="radio" name="hstatus" value="failed" onchange="loadHistory()"> 送出失敗</label>
+      </div>
+      <div id="historyList"></div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ================ token ================
+const TOKEN_KEYS = ['dashboard_admin_token','junfeng_crm_admin_token'];
+function getToken(){
+  for(const k of TOKEN_KEYS){const v=localStorage.getItem(k); if(v) return v;}
+  return '';
+}
+function setTokenValue(v){
+  localStorage.setItem('dashboard_admin_token', v);
+}
+function saveToken(){
+  const v = document.getElementById('tokenInput').value.trim();
+  if(!v){ alert('請輸入 Token'); return; }
+  setTokenValue(v);
+  document.getElementById('tokenInput').value='';
+  loadApproval();
+}
+(function initToken(){
+  // url ?token=...
+  const p = new URLSearchParams(location.search);
+  const t = p.get('token');
+  if(t){ setTokenValue(t.trim()); }
+})();
+
+async function api(url, opts={}){
+  const tok = getToken();
+  if(!tok) throw new Error('缺少 admin token — 請在上方貼上 token 後儲存。');
+  opts.headers = {...(opts.headers||{}), 'x-admin-token': tok};
+  if(opts.body && typeof opts.body==='object' && !(opts.body instanceof FormData)){
+    opts.headers['Content-Type']='application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  const r = await fetch(url, opts);
+  if(r.status===401) throw new Error('未授權 — Token 錯誤');
+  const text = await r.text();
+  let data=null; try{ data = text?JSON.parse(text):null; } catch{ data = {raw:text}; }
+  if(!r.ok){
+    const msg = (data && (data.error||data.message)) || ('HTTP '+r.status);
+    const err = new Error(msg); err.status = r.status; err.body = data; throw err;
+  }
+  return data;
+}
+
+// ================ tabs ================
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach(el=>{
+    el.classList.toggle('active', el.dataset.tab===name);
+  });
+  document.getElementById('tab-approval').classList.toggle('hide', name!=='approval');
+  document.getElementById('tab-broadcast').classList.toggle('hide', name!=='broadcast');
+  document.getElementById('tab-history').classList.toggle('hide', name!=='history');
+  if(name==='approval') loadApproval();
+  if(name==='history') loadHistory();
+}
+
+// ================ approval queue ================
+function fmtTime(s){
+  if(!s) return '';
+  try{
+    const d = new Date(s);
+    const diff = (Date.now() - d.getTime())/1000;
+    if(diff<60) return Math.floor(diff)+' 秒前';
+    if(diff<3600) return Math.floor(diff/60)+' 分前';
+    if(diff<86400) return Math.floor(diff/3600)+' 小時前';
+    return d.toLocaleString('zh-TW',{hour12:false});
+  }catch{ return s; }
+}
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function loadApproval(){
+  const host = document.getElementById('approvalList');
+  host.innerHTML = '<div class="empty"><span class="spin"></span>載入中...</div>';
+  try{
+    const rows = await api('/api/approval-queue?status=pending');
+    const list = (rows && rows.rows) || rows || [];
+    document.getElementById('pendingBadge').textContent = list.length;
+    document.getElementById('pendingBadge').classList.toggle('hide', list.length===0);
+    if(list.length===0){
+      host.innerHTML = '<div class="empty">✅ 目前沒有待審核的訊息</div>';
+      return;
+    }
+    host.innerHTML = list.map(renderItem).join('');
+  }catch(e){
+    host.innerHTML = '<div class="msg err">載入失敗：'+esc(e.message)+'</div>';
+  }
+}
+
+function renderItem(row){
+  const kws = (row.matched_keywords||[]).map(k=>`<span class="q-kw">${esc(k)}</span>`).join(' ');
+  return `
+  <div class="q-item" data-id="${row.id}">
+    <div class="q-head">
+      <span class="q-name">${esc(row.display_name||'(未命名)')}</span>
+      <span class="q-uid">${esc(row.user_id)}</span>
+      ${kws}
+      <span class="q-time">${fmtTime(row.created_at)}</span>
+    </div>
+    <div class="q-inbox">
+      <span class="tag">客戶訊息</span>${esc(row.incoming_text||'')}
+    </div>
+    <div class="q-draft">
+      <label>AI 草稿（可編輯後核可）</label>
+      <textarea id="draft-${row.id}">${esc(row.draft_reply||'')}</textarea>
+    </div>
+    <div class="btn-row">
+      <button class="btn ok" onclick="approve(${row.id})">✅ 核可送出</button>
+      <button class="btn danger" onclick="reject(${row.id})">❌ 拒絕</button>
+      <span id="r-msg-${row.id}" style="font-size:12px;color:var(--muted);align-self:center"></span>
+    </div>
+  </div>`;
+}
+
+async function approve(id){
+  const ta = document.getElementById('draft-'+id);
+  const msg = document.getElementById('r-msg-'+id);
+  const finalReply = ta ? ta.value : '';
+  if(!finalReply.trim()){ alert('內容不能為空'); return; }
+  if(!confirm('確定核可並送出給客戶？')) return;
+  msg.textContent = '送出中...'; msg.style.color = 'var(--muted)';
+  try{
+    const r = await api('/api/approval-queue/'+id+'/approve', {method:'POST', body:{finalReply}});
+    msg.textContent = '✅ 已送出'; msg.style.color = 'var(--ok)';
+    setTimeout(loadApproval, 800);
+  }catch(e){
+    msg.textContent = '❌ '+e.message; msg.style.color = 'var(--err)';
+  }
+}
+async function reject(id){
+  const msg = document.getElementById('r-msg-'+id);
+  const reason = prompt('拒絕原因（可留空）：', '');
+  if(reason===null) return;
+  msg.textContent = '處理中...'; msg.style.color = 'var(--muted)';
+  try{
+    await api('/api/approval-queue/'+id+'/reject', {method:'POST', body:{reason}});
+    msg.textContent = '已拒絕'; msg.style.color = 'var(--muted)';
+    setTimeout(loadApproval, 600);
+  }catch(e){
+    msg.textContent = '❌ '+e.message; msg.style.color = 'var(--err)';
+  }
+}
+
+// ================ history ================
+async function loadHistory(){
+  const host = document.getElementById('historyList');
+  const st = document.querySelector('input[name=hstatus]:checked').value;
+  host.innerHTML = '<div class="empty"><span class="spin"></span>載入中...</div>';
+  try{
+    const rows = await api('/api/approval-queue?status='+encodeURIComponent(st));
+    const list = (rows && rows.rows) || rows || [];
+    if(list.length===0){
+      host.innerHTML = '<div class="empty">（沒有資料）</div>';
+      return;
+    }
+    host.innerHTML = list.map(r=>{
+      const reply = r.final_reply || r.draft_reply || '';
+      const tagColor = st==='sent'?'var(--ok)':(st==='rejected'?'var(--muted)':'var(--err)');
+      const tagText  = st==='sent'?'已送出':(st==='rejected'?'已拒絕':'送出失敗');
+      return `
+      <div class="q-item">
+        <div class="q-head">
+          <span class="q-name">${esc(r.display_name||'(未命名)')}</span>
+          <span class="q-uid">${esc(r.user_id)}</span>
+          <span style="color:${tagColor};font-size:11px">● ${tagText}</span>
+          <span class="q-time">${fmtTime(r.sent_at||r.reviewed_at||r.created_at)}</span>
+        </div>
+        <div class="q-inbox"><span class="tag">客戶訊息</span>${esc(r.incoming_text||'')}</div>
+        <div class="q-inbox" style="margin-top:6px"><span class="tag">回覆內容</span>${esc(reply)}</div>
+        ${r.last_error?`<div class="msg err" style="margin-top:6px">${esc(r.last_error)}</div>`:''}
+      </div>`;
+    }).join('');
+  }catch(e){
+    host.innerHTML = '<div class="msg err">載入失敗：'+esc(e.message)+'</div>';
+  }
+}
+
+// ================ broadcast ================
+document.querySelectorAll('input[name=seg]').forEach(r=>{
+  r.addEventListener('change', ()=>{
+    document.getElementById('bcCustomBox').classList.toggle('hide', r.value!=='custom' || !r.checked);
+  });
+});
+document.getElementById('bcMsg').addEventListener('input', (e)=>{
+  document.getElementById('bcCount').textContent = e.target.value.length + ' 字';
+});
+
+function collectBroadcast(){
+  const message = document.getElementById('bcMsg').value.trim();
+  const seg = document.querySelector('input[name=seg]:checked').value;
+  let payload = {message};
+  if(seg==='custom'){
+    const uids = document.getElementById('bcUids').value
+      .split(/[\s,，\n]+/).map(s=>s.trim()).filter(Boolean);
+    payload.userIds = uids;
+  } else {
+    payload.segment = seg;
+  }
+  return {payload, seg, message};
+}
+
+async function previewTargets(){
+  const box = document.getElementById('bcMsgBox');
+  const {payload, seg} = collectBroadcast();
+  box.innerHTML = '<div class="msg"><span class="spin"></span>計算中...</div>';
+  try{
+    if(seg==='custom'){
+      box.innerHTML = `<div class="msg">✅ 指定 ${payload.userIds.length} 個 userId。</div>`;
+    } else {
+      const r = await api('/api/manual-broadcast/preview?segment='+encodeURIComponent(seg));
+      box.innerHTML = `<div class="msg">✅ 將發送給 <b>${r.count||0}</b> 位客戶（${seg==='all'?'全部':'已啟用'}）。</div>`;
+    }
+  }catch(e){
+    box.innerHTML = '<div class="msg err">❌ '+esc(e.message)+'</div>';
+  }
+}
+
+async function doBroadcast(){
+  const btn = document.getElementById('bcSendBtn');
+  const box = document.getElementById('bcMsgBox');
+  const {payload, message} = collectBroadcast();
+  if(!message){ box.innerHTML = '<div class="msg err">訊息內容不能為空</div>'; return; }
+  if(message.length>4500){ box.innerHTML = '<div class="msg err">訊息過長（上限 4500 字）</div>'; return; }
+  if(payload.userIds && payload.userIds.length===0){
+    box.innerHTML = '<div class="msg err">請輸入至少一個 userId</div>'; return;
+  }
+  const segLabel = payload.userIds ? ('指定 '+payload.userIds.length+' 人') :
+                   (payload.segment==='all'?'全部客戶':'已啟用客戶');
+  if(!confirm('確定發送給「'+segLabel+'」？\n\n訊息內容：\n'+message.slice(0,200)+(message.length>200?'...':''))) return;
+  btn.disabled = true;
+  box.innerHTML = '<div class="msg"><span class="spin"></span>發送中...（大量用戶可能需要數分鐘）</div>';
+  try{
+    const r = await api('/api/manual-broadcast', {method:'POST', body: payload});
+    box.innerHTML = `<div class="msg ok">✅ 完成。成功 ${r.sent||0} 筆，失敗 ${r.failed||0} 筆（共 ${r.total||0}）。</div>`;
+    if(r.failed && r.results){
+      const fails = r.results.filter(x=>!x.ok).slice(0,5);
+      if(fails.length){
+        box.innerHTML += '<div class="msg err">失敗樣本：<br>'+
+          fails.map(x=>esc(x.userId)+' — '+esc(x.reason||('HTTP '+x.status))).join('<br>')+'</div>';
+      }
+    }
+    document.getElementById('bcMsg').value='';
+    document.getElementById('bcCount').textContent='0 字';
+  }catch(e){
+    box.innerHTML = '<div class="msg err">❌ 發送失敗：'+esc(e.message)+'</div>';
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+// ================ init ================
+loadApproval();
+setInterval(()=>{
+  // only auto-refresh if approval tab is active
+  const active = document.querySelector('.tab.active');
+  if(active && active.dataset.tab==='approval') loadApproval();
+}, 15000);
+</script>
+</body>
+</html>

@@ -1,8 +1,13 @@
 'use strict';
 const supabase = require('./supabaseClient');
+const summaryQueue = require('./summaryQueue');
 
 const CRM_BASE_URL = 'https://dashboard.jp-sync.xyz';
 const CRM_TOKEN    = process.env.CRM_ADMIN_TOKEN;
+
+// 把 memoryStore 鎖在 module scope，讓 summaryQueue 的 worker tick 可以抓到
+let _memoryStoreRef = null;
+let _queueStarted   = false;
 
 // 每累積幾則新訊息就生成一次摘要
 const SUMMARY_THRESHOLD = 3;
@@ -102,10 +107,33 @@ async function trackAndMaybeSummarize(userId, displayName, _passedClient, memory
 
   if (count < SUMMARY_THRESHOLD) return;
 
-  // 非同步執行，不阻塞主回覆流程
-  setImmediate(() => {
-    _generateAndStore(userId, displayName, client, memoryStore)
-      .catch(err => console.error('CRM 摘要失敗：', err.message));
+  // 🔁 Tier-2 #5：改進 Supabase pending_summaries 佇列，worker 會撿起來做。
+  //    Render 重啟不再蒸發。memoryStore 用 module scope ref 鎖住，worker tick 時才抓得到。
+  _memoryStoreRef = memoryStore || _memoryStoreRef;
+  _ensureQueueStarted();
+  summaryQueue.enqueue(userId, displayName).catch(err => {
+    console.error('[CRM] 摘要 enqueue 失敗:', err && err.message);
+  });
+}
+
+// 只啟動一次：把 processFn 注入 queue，worker 撿到 row 時會呼叫 _generateAndStore
+function _ensureQueueStarted() {
+  if (_queueStarted) return;
+  _queueStarted = true;
+  const client = _anthropic;
+  if (!client) {
+    console.warn('[CRM] summaryQueue: Anthropic 未設定，worker 以降級模式啟動');
+  }
+  summaryQueue.start({
+    processFn: async (uid, dn) => {
+      // worker tick 會呼叫這裡 → 直接走原本的 _generateAndStore
+      if (!_memoryStoreRef) {
+        // 如果在 enqueue 之前重啟過，memoryStoreRef 可能是 null；
+        // 此 tick 先丟錯，queue 會 retry；下一則訊息進來 track 時會 set ref。
+        throw new Error('memoryStore ref not set yet');
+      }
+      await _generateAndStore(uid, dn, client, _memoryStoreRef);
+    }
   });
 }
 
