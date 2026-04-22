@@ -250,6 +250,11 @@ async function handleFileMessage(event) {
 
 async function handleEvent(event) {
   logUserSource(event);
+  // 自動補綁：每次收到事件時，若用戶沒有綁定選單（或舊選單已刪），自動綁到最新主選單
+  const _autoLinkUserId = event?.source?.userId;
+  if (_autoLinkUserId && client && event.type === 'message') {
+    client.linkRichMenuToUser(_autoLinkUserId, MAIN_RICH_MENU_ID).catch(() => {});
+  }
   if (event.type === 'postback') {
     const response = await handlePostbackEvent(event);
     if (!response) {
