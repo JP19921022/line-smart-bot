@@ -13,6 +13,7 @@ const { ensureFile: ensureAbEventStore, markLatestUnrepliedAsReplied } = require
 const contactsBuffer = require('./contactsBuffer');
 contactsBuffer.schedule();
 const approvalQueue = require('./approvalQueue');
+const policyBinding = require('./policyBinding');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -305,6 +306,29 @@ async function handleEvent(event) {
     return Promise.resolve(null);
   }
 
+  // ── 保單查詢 / 綁定流程 ───────────────────────────────────────
+  const userId = event?.source?.userId;
+
+  // 觸發關鍵字 → 啟動查詢保單流程
+  if (userText === '查詢我的保單' || userText === '我的保單' || userText === '保單查詢') {
+    const bindMsg = await policyBinding.startPolicyQuery(userId);
+    return client.replyMessage(event.replyToken, bindMsg);
+  }
+
+  // 綁定狀態中的文字輸入（姓名、取消）
+  if (policyBinding.getState(userId)) {
+    // 允許用戶輸入「取消」退出流程
+    if (userText === '取消') {
+      const { handleBindingPostback } = require('./policyBinding');
+      const cancelMsg = await handleBindingPostback(userId, 'policy_bind:cancel');
+      return client.replyMessage(event.replyToken, cancelMsg);
+    }
+    const bindResult = await policyBinding.handleBindingText(userId, userText);
+    if (bindResult) {
+      return client.replyMessage(event.replyToken, bindResult);
+    }
+  }
+
   // 先攔截版本按鈕，直接回傳 Flex（不要走 AI）
   if (userText === '保戶溫暖版') {
     return client.replyMessage(event.replyToken, buildWarmFlexCarousel());
@@ -358,6 +382,14 @@ async function handleEvent(event) {
 async function handlePostbackEvent(event) {
   upsertContactFromEvent(event);
   const data = event.postback?.data || '';
+
+  // ── 保單綁定流程 postback ────────────────────────────────────
+  if (data.startsWith('policy_bind:')) {
+    const userId = event?.source?.userId;
+    const result = await policyBinding.handleBindingPostback(userId, data);
+    if (result) return result;
+  }
+
   if (data === 'action=schedule-date') {
     const date = event.postback?.params?.date || '';
     return buildScheduleDateResponse(date);
