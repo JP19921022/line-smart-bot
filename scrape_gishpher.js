@@ -121,13 +121,13 @@ function buildCoverageArrays(policyName, riderLines) {
   };
 }
 
-// ── 保單類型推斷（T=傳統, S=儲蓄, I=投資型, D=定期）────────────
+// ── 保單類型推斷（T=傳統, S=儲蓄, I=投資型）─────────────────
+// 注意：DB check constraint 只允許 T/S/I/P，不可使用其他值
 function inferPolicyType(policyName) {
   const n = policyName || '';
-  if (/變額|投資型|投連/.test(n))              return 'I';
-  if (/年金|儲蓄|增值|利率變動|萬能壽/.test(n)) return 'S';
-  if (/定期|一年期/.test(n))                    return 'D';
-  return 'T';
+  if (/變額|投資型|投連/.test(n))               return 'I';
+  if (/年金|儲蓄|增值|利率變動|萬能壽/.test(n))  return 'S';
+  return 'T'; // 定期/傳統/醫療/意外 等都歸 T
 }
 
 // ── 建立 Supabase 行 ──────────────────────────────────────────
