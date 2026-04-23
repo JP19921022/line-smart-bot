@@ -80,11 +80,13 @@ async function getPoliciesByCustomerId(customerId, activeOnly = true) {
   let query = sb
     .from('customer_policies')
     .select(`
-      id, policy_type, policy_name, policy_number,
-      policy_status, insurance_company, currency_text,
+      id, policy_type, policy_name, policy_number, policy_category,
+      policy_status, insurance_company, currency_text, currency,
+      client_name, owner_name, insured_name,
       main_premium, lifetime_rider_prem, term_rider_prem, waiver_prem,
       payment_years, payment_frequency,
-      life_whole_amount, life_term_amount,
+      policy_amount, policy_unit,
+      life_whole_amount, life_term_amount, life_invest_amount,
       medical_coverage, accident_coverage, critical_coverage,
       disability_coverage, ltc_coverage, cancer_coverage,
       account_value, effective_date

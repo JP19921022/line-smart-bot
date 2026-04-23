@@ -7,16 +7,27 @@
  *   2. 未綁定 → 詢問姓名
  *   3. 姓名輸入 → 模糊比對 customer_profiles，列出候選
  *   4. 選擇確認（postback）→ 更新 line_user_id
- *   5. 綁定成功 → 顯示保單摘要 Flex
+ *   5. 綁定成功 → 顯示保單 Carousel（每張一張卡）
+ *
+ * postback 格式：
+ *   policy_bind:confirm:<profileId>   — 確認綁定
+ *   policy_bind:cancel                — 取消查詢
+ *   policy_page:<page>                — 翻頁（page = 0-indexed）
  */
 
 const supabasePolicies = require('./supabasePolicies');
 
-// ── 狀態機（in-memory，保存期間即可） ─────────────────────────
-// key: userId  value: { step: 'waiting_name'|'waiting_confirm', candidates: [...] }
-const bindingState = new Map();
+// ── 常數對照表 ────────────────────────────────────────────────
+const TYPE_MAP   = { T: '傳統', S: '儲蓄', I: '投資型', P: '產險' };
+const TYPE_COLOR = { T: '#3D5AFE', S: '#00897B', I: '#E65100', P: '#6A1B9A' };
+const FREQ_MAP   = { 0: '彈性繳', 1: '月繳', 2: '季繳', 3: '年繳', 4: '半年繳' };
 
-const BINDING_TIMEOUT_MS = 5 * 60 * 1000; // 5 分鐘逾時自動清除
+const CARDS_PER_PAGE = 9; // LINE carousel 上限 10，留 1 給「查看更多」
+
+// ── 狀態機（in-memory）────────────────────────────────────────
+// key: userId  value: { step, candidates?, policies?, clientName?, ts }
+const bindingState = new Map();
+const BINDING_TIMEOUT_MS = 10 * 60 * 1000; // 10 分鐘
 
 function setState(userId, state) {
   bindingState.set(userId, { ...state, ts: Date.now() });
@@ -38,24 +49,24 @@ function clearState(userId) {
 
 // ── 入口：檢查是否已綁定，決定直接顯示或開始綁定 ───────────────
 async function startPolicyQuery(userId) {
-  // 1. 已綁定 → 直接查詢並回傳保單摘要
   const profile = await supabasePolicies.getProfileByLineId(userId);
   if (profile) {
     const policies = await supabasePolicies.getPoliciesByCustomerId(profile.id);
-    return buildPolicySummaryFlex(profile.client_name, policies);
+    // 快取保單供翻頁用
+    setState(userId, { step: 'browsing', policies, clientName: profile.client_name });
+    return buildPoliciesCarousel(profile.client_name, policies, 0);
   }
 
-  // 2. 未綁定 → 開始綁定流程
+  // 未綁定 → 開始綁定流程
   setState(userId, { step: 'waiting_name' });
   return buildAskNameMessage();
 }
 
-// ── 處理文字輸入（從 handleEvent 攔截） ─────────────────────────
+// ── 處理文字輸入 ─────────────────────────────────────────────
 async function handleBindingText(userId, text) {
   const state = getState(userId);
-  if (!state) return null; // 不在綁定流程中
+  if (!state) return null;
 
-  // Step: 等待姓名輸入
   if (state.step === 'waiting_name') {
     const name = text.trim();
     if (!name) {
@@ -63,7 +74,6 @@ async function handleBindingText(userId, text) {
     }
 
     const candidates = await supabasePolicies.searchProfilesByName(name);
-
     if (!candidates || candidates.length === 0) {
       clearState(userId);
       return {
@@ -72,12 +82,10 @@ async function handleBindingText(userId, text) {
       };
     }
 
-    // 找到候選 → 讓用戶確認
     setState(userId, { step: 'waiting_confirm', candidates, inputName: name });
     return buildConfirmCandidatesFlex(candidates, name);
   }
 
-  // 如果在等確認期間輸入文字 → 提示用請點選按鈕
   if (state.step === 'waiting_confirm') {
     return {
       type: 'text',
@@ -88,9 +96,25 @@ async function handleBindingText(userId, text) {
   return null;
 }
 
-// ── 處理 postback（從 handlePostbackEvent 攔截） ──────────────
+// ── 處理 postback ────────────────────────────────────────────
 async function handleBindingPostback(userId, data) {
-  // data 格式: policy_bind:confirm:<profileId>  或  policy_bind:cancel
+  // 翻頁
+  if (data.startsWith('policy_page:')) {
+    const page = parseInt(data.split(':')[1], 10) || 0;
+    const state = getState(userId);
+    if (state && state.policies) {
+      return buildPoliciesCarousel(state.clientName, state.policies, page);
+    }
+    // 若 state 消失，重新查詢
+    const profile = await supabasePolicies.getProfileByLineId(userId);
+    if (profile) {
+      const policies = await supabasePolicies.getPoliciesByCustomerId(profile.id);
+      setState(userId, { step: 'browsing', policies, clientName: profile.client_name });
+      return buildPoliciesCarousel(profile.client_name, policies, page);
+    }
+    return { type: 'text', text: '查詢逾時，請重新點選「查詢我的保單」。' };
+  }
+
   if (!data.startsWith('policy_bind:')) return null;
 
   if (data === 'policy_bind:cancel') {
@@ -101,8 +125,6 @@ async function handleBindingPostback(userId, data) {
   const parts = data.split(':');
   if (parts[1] === 'confirm' && parts[2]) {
     const profileId = parts[2];
-
-    // 更新 line_user_id
     const ok = await supabasePolicies.bindLineUser(profileId, userId);
     clearState(userId);
 
@@ -110,16 +132,18 @@ async function handleBindingPostback(userId, data) {
       return { type: 'text', text: '綁定失敗，請稍後再試或聯繫業務員。' };
     }
 
-    // 查詢保單並顯示摘要
     const profile = await supabasePolicies.getProfileById(profileId);
     const policies = await supabasePolicies.getPoliciesByCustomerId(profileId);
-    return buildBindingSuccessFlex(profile?.client_name || '您', policies);
+    setState(userId, { step: 'browsing', policies, clientName: profile?.client_name });
+    return buildPoliciesCarousel(profile?.client_name || '您', policies, 0, true);
   }
 
   return null;
 }
 
-// ── Flex Message 建構 ─────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// Flex Message 建構
+// ══════════════════════════════════════════════════════════════
 
 function buildAskNameMessage() {
   return {
@@ -128,35 +152,29 @@ function buildAskNameMessage() {
   };
 }
 
+// ── 候選清單：確認身份 ─────────────────────────────────────────
 function buildConfirmCandidatesFlex(candidates, inputName) {
-  // 最多顯示 5 筆候選
   const bubbles = candidates.slice(0, 5).map((c) => ({
     type: 'bubble',
     size: 'micro',
     header: {
       type: 'box',
       layout: 'vertical',
+      backgroundColor: '#3D5AFE',
+      paddingAll: '10px',
       contents: [
-        { type: 'text', text: '確認身份', size: 'xs', color: '#aaaaaa', align: 'center' },
+        { type: 'text', text: '確認身份', size: 'xs', color: '#FFFFFF', align: 'center' },
       ],
-      paddingBottom: '4px',
     },
     body: {
       type: 'box',
       layout: 'vertical',
       spacing: 'xs',
       contents: [
+        { type: 'text', text: c.client_name, size: 'lg', weight: 'bold', align: 'center', color: '#1A1A2E' },
         {
           type: 'text',
-          text: c.client_name,
-          size: 'lg',
-          weight: 'bold',
-          align: 'center',
-          color: '#1A1A2E',
-        },
-        {
-          type: 'text',
-          text: c.client_id_number ? `編號：${maskId(c.client_id_number)}` : '（無編號）',
+          text: c.client_id_number ? maskId(c.client_id_number) : '（無編號）',
           size: 'xxs',
           color: '#888888',
           align: 'center',
@@ -183,7 +201,6 @@ function buildConfirmCandidatesFlex(candidates, inputName) {
     },
   }));
 
-  // 加入「都不是我」取消按鈕
   bubbles.push({
     type: 'bubble',
     size: 'micro',
@@ -193,14 +210,7 @@ function buildConfirmCandidatesFlex(candidates, inputName) {
       justifyContent: 'center',
       height: '100px',
       contents: [
-        {
-          type: 'text',
-          text: '都不是\n我',
-          size: 'md',
-          color: '#888888',
-          align: 'center',
-          wrap: true,
-        },
+        { type: 'text', text: '都不是\n我', size: 'md', color: '#888888', align: 'center', wrap: true },
       ],
     },
     footer: {
@@ -225,19 +235,17 @@ function buildConfirmCandidatesFlex(candidates, inputName) {
   return {
     type: 'flex',
     altText: `找到 ${candidates.length} 筆資料，請確認您的身份`,
-    contents: {
-      type: 'carousel',
-      contents: bubbles,
-    },
+    contents: { type: 'carousel', contents: bubbles },
   };
 }
 
-function buildBindingSuccessFlex(clientName, policies) {
-  const activePolicies = policies.filter((p) => p.policy_status === 1);
-  return buildPolicySummaryFlex(clientName, activePolicies, true);
-}
-
-function buildPolicySummaryFlex(clientName, policies, isFirstTime = false) {
+// ── 主角：保單 Carousel ────────────────────────────────────────
+/**
+ * 將保單清單轉成 Flex Carousel
+ * page: 0-indexed
+ * isFirstTime: 剛綁定時顯示歡迎
+ */
+function buildPoliciesCarousel(clientName, policies, page = 0, isFirstTime = false) {
   if (!policies || policies.length === 0) {
     return {
       type: 'text',
@@ -247,166 +255,293 @@ function buildPolicySummaryFlex(clientName, policies, isFirstTime = false) {
     };
   }
 
-  // 統計
-  const typeMap = { T: '傳統保單', S: '儲蓄保單', I: '投資型', P: '產險' };
-  const byCurrency = {};
-  for (const p of policies) {
-    const currency = p.currency_text || '台幣';
-    const prem = (p.main_premium || 0)
-      + (p.lifetime_rider_prem || 0)
-      + (p.term_rider_prem || 0)
-      + (p.waiver_prem || 0);
-    byCurrency[currency] = (byCurrency[currency] || 0) + prem;
+  const start = page * CARDS_PER_PAGE;
+  const pageItems = policies.slice(start, start + CARDS_PER_PAGE);
+  const hasMore = policies.length > start + CARDS_PER_PAGE;
+  const remaining = policies.length - start - pageItems.length;
+
+  const bubbles = pageItems.map((p) => buildPolicyCard(p));
+
+  if (hasMore) {
+    bubbles.push(buildMoreCard(page + 1, remaining));
   }
 
-  const premiumLines = Object.entries(byCurrency)
-    .map(([cur, total]) => `  ${cur}：${numberWithCommas(Math.round(total))} 元`)
-    .join('\n');
-
-  // 分組
-  const grouped = {};
-  for (const p of policies) {
-    const label = typeMap[p.policy_type] || p.policy_type;
-    if (!grouped[label]) grouped[label] = [];
-    grouped[label].push(p);
-  }
-
-  const bodyContents = [
-    {
-      type: 'box',
-      layout: 'horizontal',
-      contents: [
-        { type: 'text', text: '保單總數', size: 'sm', color: '#555555', flex: 0 },
-        { type: 'text', text: `${policies.length} 張`, size: 'sm', weight: 'bold', align: 'end', color: '#111111' },
-      ],
-    },
-    { type: 'separator', margin: 'sm' },
-  ];
-
-  // 各類型明細
-  for (const [label, list] of Object.entries(grouped)) {
-    bodyContents.push({
-      type: 'box',
-      layout: 'horizontal',
-      margin: 'sm',
-      contents: [
-        { type: 'text', text: label, size: 'xs', color: '#888888', flex: 0 },
-        { type: 'text', text: `${list.length} 張`, size: 'xs', align: 'end', color: '#444444' },
-      ],
-    });
-  }
-
-  bodyContents.push({ type: 'separator', margin: 'md' });
-  bodyContents.push({
-    type: 'text',
-    text: '年繳保費合計',
-    size: 'xs',
-    color: '#888888',
-    margin: 'md',
-  });
-
-  for (const [cur, total] of Object.entries(byCurrency)) {
-    bodyContents.push({
-      type: 'box',
-      layout: 'horizontal',
-      margin: 'xs',
-      contents: [
-        { type: 'text', text: cur, size: 'sm', color: '#555555', flex: 0 },
-        {
-          type: 'text',
-          text: `${numberWithCommas(Math.round(total))} 元`,
-          size: 'sm',
-          weight: 'bold',
-          align: 'end',
-          color: '#3D5AFE',
-        },
-      ],
-    });
-  }
-
-  const headerText = isFirstTime
-    ? `✅ 綁定成功！歡迎 ${clientName}`
-    : `📋 ${clientName} 的保單摘要`;
+  const altText = isFirstTime
+    ? `✅ 綁定成功！${clientName} 共 ${policies.length} 張保單`
+    : `${clientName} 的保單（${policies.length} 張）`;
 
   return {
     type: 'flex',
-    altText: `${clientName} 的保單摘要（${policies.length} 張）`,
-    contents: {
-      type: 'bubble',
-      header: {
-        type: 'box',
-        layout: 'vertical',
-        backgroundColor: '#3D5AFE',
-        paddingAll: '16px',
-        contents: [
-          {
-            type: 'text',
-            text: headerText,
-            size: 'sm',
-            color: '#FFFFFF',
-            weight: 'bold',
-            wrap: true,
-          },
-          {
-            type: 'text',
-            text: '有效保單',
-            size: 'xxs',
-            color: '#C5CAE9',
-            margin: 'xs',
-          },
-        ],
-      },
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'xs',
-        paddingAll: '16px',
-        contents: bodyContents,
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'sm',
-        paddingAll: '12px',
-        contents: [
-          {
-            type: 'button',
-            style: 'primary',
-            color: '#3D5AFE',
-            height: 'sm',
-            action: {
-              type: 'message',
-              label: '詢問業務員',
-              text: '我想了解我的保單詳情',
+    altText,
+    contents: { type: 'carousel', contents: bubbles },
+  };
+}
+
+/** 建立單張保單卡片 */
+function buildPolicyCard(p) {
+  const typeName  = TYPE_MAP[p.policy_type]   || p.policy_type || '其他';
+  const typeColor = TYPE_COLOR[p.policy_type]  || '#3D5AFE';
+  const isActive  = p.policy_status === 1;
+  const statusText  = isActive ? '有效' : '停效';
+  const statusColor = isActive ? '#2E7D32' : '#C62828';
+
+  const policyName   = p.policy_name || p.policy_category || '（未填保單名稱）';
+  const effectDate   = formatROCDate(p.effective_date);
+  const ownerName    = p.owner_name   || p.client_name || '—';
+  const insuredName  = p.insured_name || p.client_name || '—';
+  const company      = p.insurance_company || '—';
+  const currency     = p.currency_text || (p.currency === 2 ? '美元' : p.currency === 3 ? '人民幣' : '台幣');
+
+  const mainPrem  = p.main_premium         || 0;
+  const riderPrem = (p.lifetime_rider_prem || 0) + (p.term_rider_prem || 0) + (p.waiver_prem || 0);
+  const totalPrem = mainPrem + riderPrem;
+
+  const freqText  = FREQ_MAP[p.payment_frequency] ?? '—';
+  const payYears  = p.payment_years ? `${p.payment_years}年期` : '終身';
+
+  // 保額優先取 policy_amount，投資型取 account_value
+  const policyAmt = p.policy_amount
+    ? numberWithCommas(Math.round(p.policy_amount))
+    : (p.life_whole_amount ? numberWithCommas(Math.round(p.life_whole_amount)) : '—');
+
+  // ── 保單詳細欄位列表 ─────────────────────────────────
+  const rows = [
+    { label: '保險公司', value: company },
+    { label: '保單號碼', value: maskPolicyNumber(p.policy_number) },
+    { label: '生效日期', value: effectDate },
+    { label: '要保人',   value: ownerName },
+    { label: '被保人',   value: insuredName },
+    { label: '保額',     value: policyAmt !== '—' ? `${policyAmt} 元` : '—' },
+    { label: '繳費期間', value: payYears },
+    { label: '繳費方式', value: freqText },
+    { label: '年繳保費', value: totalPrem > 0 ? `${numberWithCommas(Math.round(totalPrem))} ${currency}` : '—' },
+  ];
+
+  const bodyContents = rows.map((row) => ({
+    type: 'box',
+    layout: 'horizontal',
+    margin: 'sm',
+    contents: [
+      { type: 'text', text: row.label, size: 'xs', color: '#777777', flex: 3, wrap: false },
+      { type: 'text', text: row.value, size: 'xs', color: '#111111', flex: 4, align: 'end', wrap: true },
+    ],
+  }));
+
+  return {
+    type: 'bubble',
+    size: 'kilo',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: typeColor,
+      paddingAll: '12px',
+      paddingBottom: '10px',
+      contents: [
+        // 類型 badge + 狀態 badge
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'box',
+              layout: 'vertical',
+              backgroundColor: 'rgba(255,255,255,0.25)',
+              cornerRadius: '4px',
+              paddingStart: '6px',
+              paddingEnd: '6px',
+              paddingTop: '2px',
+              paddingBottom: '2px',
+              contents: [
+                { type: 'text', text: typeName, size: 'xxs', color: '#FFFFFF', weight: 'bold' },
+              ],
             },
-          },
-          {
-            type: 'button',
-            style: 'secondary',
-            height: 'sm',
-            action: {
-              type: 'message',
-              label: '理賠流程查詢',
-              text: '請問理賠需要準備哪些資料？',
+            { type: 'filler' },
+            {
+              type: 'box',
+              layout: 'vertical',
+              backgroundColor: isActive ? '#43A047' : '#E53935',
+              cornerRadius: '4px',
+              paddingStart: '6px',
+              paddingEnd: '6px',
+              paddingTop: '2px',
+              paddingBottom: '2px',
+              contents: [
+                { type: 'text', text: statusText, size: 'xxs', color: '#FFFFFF', weight: 'bold' },
+              ],
             },
+          ],
+        },
+        // 保單名稱
+        {
+          type: 'text',
+          text: policyName,
+          size: 'sm',
+          color: '#FFFFFF',
+          weight: 'bold',
+          wrap: true,
+          margin: 'sm',
+          maxLines: 3,
+        },
+      ],
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: '12px',
+      spacing: 'none',
+      contents: [
+        ...bodyContents,
+        // 分隔線（若有附約覆蓋率資料）
+        ...buildCoverageSection(p),
+      ],
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      paddingAll: '8px',
+      paddingTop: '6px',
+      contents: [
+        {
+          type: 'button',
+          style: 'secondary',
+          height: 'sm',
+          action: {
+            type: 'message',
+            label: '詢問業務員',
+            text: `我想了解保單：${p.policy_name || p.policy_number || policyName}`,
           },
-        ],
-      },
+        },
+      ],
     },
   };
 }
 
-// ── 工具函式 ──────────────────────────────────────────────────
+/** 若有附約資料，補充一個附約區塊 */
+function buildCoverageSection(p) {
+  const riders = [];
+  if (hasData(p.medical_coverage))    riders.push('醫療附約');
+  if (hasData(p.accident_coverage))   riders.push('意外附約');
+  if (hasData(p.critical_coverage))   riders.push('重大傷病');
+  if (hasData(p.disability_coverage)) riders.push('失能附約');
+  if (hasData(p.ltc_coverage))        riders.push('長照附約');
+  if (hasData(p.cancer_coverage))     riders.push('癌症附約');
 
+  if (riders.length === 0) return [];
+
+  return [
+    { type: 'separator', margin: 'md' },
+    {
+      type: 'text',
+      text: '附約',
+      size: 'xxs',
+      color: '#888888',
+      margin: 'md',
+      weight: 'bold',
+    },
+    {
+      type: 'text',
+      text: riders.join('・'),
+      size: 'xxs',
+      color: '#444444',
+      margin: 'xs',
+      wrap: true,
+    },
+  ];
+}
+
+function hasData(jsonbArr) {
+  if (!jsonbArr) return false;
+  if (Array.isArray(jsonbArr)) return jsonbArr.length > 0;
+  return false;
+}
+
+/** 查看更多卡片 */
+function buildMoreCard(nextPage, remaining) {
+  return {
+    type: 'bubble',
+    size: 'kilo',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      justifyContent: 'center',
+      paddingAll: '20px',
+      contents: [
+        {
+          type: 'text',
+          text: '📄',
+          size: 'xxl',
+          align: 'center',
+        },
+        {
+          type: 'text',
+          text: `還有 ${remaining} 張保單`,
+          size: 'md',
+          weight: 'bold',
+          color: '#333333',
+          align: 'center',
+          margin: 'md',
+        },
+        {
+          type: 'button',
+          style: 'primary',
+          color: '#3D5AFE',
+          margin: 'lg',
+          action: {
+            type: 'postback',
+            label: '查看更多',
+            data: `policy_page:${nextPage}`,
+            displayText: '查看更多保單',
+          },
+        },
+      ],
+    },
+  };
+}
+
+// ══════════════════════════════════════════════════════════════
+// 工具函式
+// ══════════════════════════════════════════════════════════════
+
+/** 遮蔽身分證號：只顯示首1碼+末4碼 */
 function maskId(idNumber) {
-  if (!idNumber) return '';
-  if (idNumber.length <= 4) return idNumber;
-  // 只顯示首1碼和末4碼
+  if (!idNumber || idNumber.length <= 4) return idNumber || '';
   return idNumber[0] + '******' + idNumber.slice(-4);
 }
 
+/** 遮蔽保單號碼：顯示後6碼，前面用 * */
+function maskPolicyNumber(num) {
+  if (!num) return '—';
+  const s = String(num);
+  if (s.length <= 6) return s;
+  return '****' + s.slice(-6);
+}
+
+/** 西元日期轉民國年顯示 (YYYY-MM-DD → 民國N年M月D日) */
+function formatROCDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const roc = d.getFullYear() - 1911;
+    return `${roc}年${d.getMonth() + 1}月${d.getDate()}日`;
+  } catch {
+    return dateStr;
+  }
+}
+
+/** 數字加千分位逗號 */
 function numberWithCommas(n) {
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+// ── 向外相容舊呼叫（app.js 可能直接呼叫舊函式名稱）────────────
+// buildPolicySummaryFlex 保留別名
+function buildPolicySummaryFlex(clientName, policies, isFirstTime = false) {
+  return buildPoliciesCarousel(clientName, policies, 0, isFirstTime);
+}
+
+function buildBindingSuccessFlex(clientName, policies) {
+  return buildPoliciesCarousel(clientName, policies, 0, true);
 }
 
 module.exports = {
@@ -414,4 +549,6 @@ module.exports = {
   handleBindingText,
   handleBindingPostback,
   getState,
+  // 若其他地方有直接引用
+  buildPolicySummaryFlex,
 };

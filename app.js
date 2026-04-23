@@ -383,8 +383,8 @@ async function handlePostbackEvent(event) {
   upsertContactFromEvent(event);
   const data = event.postback?.data || '';
 
-  // ── 保單綁定流程 postback ────────────────────────────────────
-  if (data.startsWith('policy_bind:')) {
+  // ── 保單綁定流程 postback（包含翻頁 policy_page:） ──────────
+  if (data.startsWith('policy_bind:') || data.startsWith('policy_page:')) {
     const userId = event?.source?.userId;
     const result = await policyBinding.handleBindingPostback(userId, data);
     if (result) return result;
