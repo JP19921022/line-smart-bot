@@ -84,17 +84,63 @@ function parseAmount(str) {
   return isNaN(n) ? null : n;
 }
 
+// ── 從附約名稱推斷保障類別 ────────────────────────────────────
+function buildCoverageArrays(policyName, riderLines) {
+  const allNames = [policyName || '', ...(riderLines || [])].join(' ');
+
+  function matches(keywords) {
+    return keywords.some(kw => allNames.includes(kw));
+  }
+
+  // 每個 coverage 欄存附約名稱陣列（若有）；無附約則存空陣列
+  const riders = riderLines || [];
+
+  const medicalRiders    = riders.filter(r => /醫療|醫卡|住院|手術|實支|醫靠/.test(r));
+  const accidentRiders   = riders.filter(r => /意外|傷害/.test(r));
+  const criticalRiders   = riders.filter(r => /重大傷病|重大疾病|重疾|特定/.test(r));
+  const disabilityRiders = riders.filter(r => /失能|殘廢/.test(r));
+  const ltcRiders        = riders.filter(r => /長照|長期看護|長期照顧/.test(r));
+  const cancerRiders     = riders.filter(r => /癌症|惡性腫瘤/.test(r));
+
+  // 若主約本身就是醫療/意外等類型，也標記
+  const pn = policyName || '';
+  if (/醫療|醫靠|醫卡|住院/.test(pn) && medicalRiders.length === 0)    medicalRiders.push(pn);
+  if (/意外|傷害/.test(pn)           && accidentRiders.length === 0)   accidentRiders.push(pn);
+  if (/重大傷病|重大疾病/.test(pn)   && criticalRiders.length === 0)   criticalRiders.push(pn);
+  if (/失能|殘廢/.test(pn)           && disabilityRiders.length === 0) disabilityRiders.push(pn);
+  if (/長照|長期照顧/.test(pn)       && ltcRiders.length === 0)        ltcRiders.push(pn);
+  if (/癌症|惡性腫瘤/.test(pn)       && cancerRiders.length === 0)     cancerRiders.push(pn);
+
+  return {
+    medical_coverage:     medicalRiders,
+    accident_coverage:    accidentRiders,
+    critical_coverage:    criticalRiders,
+    disability_coverage:  disabilityRiders,
+    ltc_coverage:         ltcRiders,
+    cancer_coverage:      cancerRiders,
+  };
+}
+
+// ── 保單類型推斷（T=傳統, S=儲蓄, I=投資型, D=定期）────────────
+function inferPolicyType(policyName) {
+  const n = policyName || '';
+  if (/變額|投資型|投連/.test(n))              return 'I';
+  if (/年金|儲蓄|增值|利率變動|萬能壽/.test(n)) return 'S';
+  if (/定期|一年期/.test(n))                    return 'D';
+  return 'T';
+}
+
 // ── 建立 Supabase 行 ──────────────────────────────────────────
 function buildRow(raw) {
   const uuid = uuidv5(`${raw.insurance_company}|${raw.policy_number}`, NS);
+  const coverage = buildCoverageArrays(raw.policy_name, raw.rider_lines);
   return {
     fintechgo_uuid:       uuid,
-    policy_type:          'T', // 壽險保單，預設傳統；後面可依名稱細分
+    policy_type:          inferPolicyType(raw.policy_name),
     client_name:          raw.owner_name,
     client_id_number:     raw.owner_id,
     policy_number:        raw.policy_number,
     policy_name:          raw.policy_name || null,
-    // rider_lines 存原始文字供除錯（不寫 DB，已無對應欄位）
     policy_status:        parseStatus(raw.policy_status),
     insurance_company:    raw.insurance_company,
     owner_name:           raw.owner_name,
@@ -104,19 +150,12 @@ function buildRow(raw) {
     effective_date:       parseROCDate(raw.effective_date),
     receipt_date:         parseROCDate(raw.receipt_date),
     application_date:     parseROCDate(raw.application_date),
-    currency:             1, // 台幣
+    currency:             1,
     main_premium:         parseAmount(raw.main_premium),
     payment_frequency:    parseFreq(raw.payment_freq),
     deduction_method:     parseDeductionMethod(raw.payment_method),
-    // 附約保費暫存於 term_rider_prem（未細分）
     term_rider_prem:      parseAmount(raw.rider_premium),
-    // 空陣列欄位
-    medical_coverage:     [],
-    accident_coverage:    [],
-    critical_coverage:    [],
-    disability_coverage:  [],
-    ltc_coverage:         [],
-    cancer_coverage:      [],
+    ...coverage,
     account_value:        {},
   };
 }
