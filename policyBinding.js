@@ -345,7 +345,7 @@ function buildPolicyCard(p) {
             {
               type: 'box',
               layout: 'vertical',
-              backgroundColor: 'rgba(255,255,255,0.25)',
+              backgroundColor: '#FFFFFF40',
               cornerRadius: '4px',
               paddingStart: '6px',
               paddingEnd: '6px',
