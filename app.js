@@ -315,6 +315,19 @@ async function handleEvent(event) {
     return client.replyMessage(event.replyToken, bindMsg);
   }
 
+  // 取消綁定關鍵字（不需要 state，直接呼叫專屬入口）
+  if (/取消綁定|解除綁定|解綁|取消帳號/.test(userText)) {
+    console.log('[unbind] keyword matched, userId:', userId);
+    try {
+      const unbindResult = await policyBinding.startUnbindFlow(userId);
+      console.log('[unbind] startUnbindFlow result type:', unbindResult?.type);
+      return client.replyMessage(event.replyToken, unbindResult);
+    } catch (e) {
+      console.error('[unbind] startUnbindFlow error:', e.message, e.stack);
+      return client.replyMessage(event.replyToken, { type: 'text', text: '解除綁定功能暫時無法使用，請稍後再試。' });
+    }
+  }
+
   // 綁定狀態中的文字輸入（姓名、取消）
   if (policyBinding.getState(userId)) {
     // 允許用戶輸入「取消」退出流程
@@ -384,10 +397,10 @@ async function handlePostbackEvent(event) {
   const data = event.postback?.data || '';
 
   // ── 保單綁定流程 postback（包含翻頁 policy_page:） ──────────
-  if (data.startsWith('policy_bind:') || data.startsWith('policy_page:')) {
+  if (data.startsWith('policy_bind:') || data.startsWith('policy_page:') || data.startsWith('policy_unbind:')) {
     const userId = event?.source?.userId;
     const result = await policyBinding.handleBindingPostback(userId, data);
-    if (result) return result;
+    if (result) return client.replyMessage(event.replyToken, result);
   }
 
   if (data === 'action=schedule-date') {

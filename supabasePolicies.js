@@ -72,6 +72,20 @@ async function bindLineUser(profileId, lineUserId) {
   return true;
 }
 
+/** 解除 LINE 綁定（將 line_user_id 清為 NULL）*/
+async function unbindLineUser(lineUserId) {
+  if (!sb || !lineUserId) return false;
+  const { error } = await sb
+    .from('customer_profiles')
+    .update({ line_user_id: null })
+    .eq('line_user_id', lineUserId);
+  if (error) {
+    console.error('[supabasePolicies] unbindLineUser error:', error.message);
+    return false;
+  }
+  return true;
+}
+
 // ── customer_policies 查詢 ─────────────────────────────────────
 
 /** 取得某客戶所有有效保單（預設只取有效保單） */
@@ -82,14 +96,14 @@ async function getPoliciesByCustomerId(customerId, activeOnly = true) {
     .select(`
       id, policy_type, policy_name, policy_number, policy_category,
       policy_status, insurance_company, currency_text, currency,
-      client_name, owner_name, insured_name,
+      client_name, owner_name, owner_id_number, insured_name, insured_id_number,
       main_premium, lifetime_rider_prem, term_rider_prem, waiver_prem,
-      payment_years, payment_frequency,
+      payment_years, payment_frequency, deduction_method,
       policy_amount, policy_unit,
       life_whole_amount, life_term_amount, life_invest_amount,
       medical_coverage, accident_coverage, critical_coverage,
       disability_coverage, ltc_coverage, cancer_coverage,
-      account_value, effective_date
+      account_value, effective_date, raw_data
     `)
     .eq('customer_id', customerId)
     .order('effective_date', { ascending: false });
@@ -144,11 +158,51 @@ async function getPremiumSummaryByLineUserId(lineUserId) {
   return data || [];
 }
 
+/**
+ * 驗證手機號碼 + 身分證字號是否與 profileId 對應的客戶資料吻合
+ * 手機比對保單 raw_data.owner_phone；身分證比對 customer_profiles.client_id_number
+ */
+async function verifyIdentity(profileId, phone, idNumber) {
+  if (!sb || !profileId) return false;
+
+  // 1. 取 profile 的身分證字號 + 姓名
+  const { data: profile, error: pe } = await sb
+    .from('customer_profiles')
+    .select('client_id_number, client_name')
+    .eq('id', profileId)
+    .maybeSingle();
+
+  if (pe || !profile) return false;
+
+  // 比對身分證字號（不分大小寫、去除空白）
+  const cleanIdInput = (idNumber || '').trim().toUpperCase();
+  const cleanIdDb    = (profile.client_id_number || '').trim().toUpperCase();
+  if (!cleanIdInput || cleanIdInput !== cleanIdDb) return false;
+
+  // 2. 比對手機號碼（從保單 raw_data.owner_phone）
+  const cleanPhone = (phone || '').trim().replace(/[-\s]/g, '');
+  if (!cleanPhone) return false;
+
+  const { data: policies } = await sb
+    .from('customer_policies')
+    .select('raw_data')
+    .eq('client_name', profile.client_name)
+    .not('raw_data', 'is', null);
+
+  if (!policies || policies.length === 0) return false;
+
+  return policies.some(p => {
+    const dbPhone = ((p.raw_data || {}).owner_phone || '').replace(/[-\s]/g, '');
+    return dbPhone && dbPhone === cleanPhone;
+  });
+}
+
 module.exports = {
   getProfileByLineId,
   getProfileById,
   searchProfilesByName,
   bindLineUser,
+  verifyIdentity,
   getPoliciesByCustomerId,
   getPoliciesByLineUserId,
   getPremiumSummaryByLineUserId,
