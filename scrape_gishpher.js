@@ -94,6 +94,7 @@ function buildRow(raw) {
     client_id_number:     raw.owner_id,
     policy_number:        raw.policy_number,
     policy_name:          raw.policy_name || null,
+    // rider_lines 存原始文字供除錯（不寫 DB，已無對應欄位）
     policy_status:        parseStatus(raw.policy_status),
     insurance_company:    raw.insurance_company,
     owner_name:           raw.owner_name,
@@ -275,6 +276,8 @@ async function main() {
   console.log(`📋 總頁數：${totalPages}`);
 
   // ── Step 4: 爬取所有頁面 ─────────────────────────────────────
+  const NO_EXPAND  = process.argv.includes('--no-expand');
+  const DBG_EXPAND = process.argv.includes('--debug-expand');
   const allRaw = [];
   let pageNum = 1;
 
@@ -282,39 +285,151 @@ async function main() {
     await page.waitForTimeout(800);
     console.log(`  爬取第 ${pageNum} / ${totalPages} 頁...`);
 
-    // 取得所有資料列（跳過 header）
-    const rows = await page.$$eval('table tbody tr', (trs) =>
-      trs.map((tr) => {
-        const tds = [...tr.querySelectorAll('td')];
-        // 跳過展開按鈕欄（通常是第一欄，只有 > 符號）
-        const data = tds.filter((td) => !td.querySelector('button') || tds.indexOf(td) > 0);
-        const texts = tds.map((td) => td.innerText.trim());
-        return texts;
-      }).filter((r) => r.length > 5) // 過濾掉空列
-    );
-
-    for (const cells of rows) {
-      // 根據截圖欄位順序：受理日期|壽險公司|保單號碼|要保人|要保人ID|被保人|被保人ID|保單狀況|生效日期|核發日期|回執日期|繳別|繳費方式|主約保費|附約保費
-      // 第一欄可能是展開按鈕（>），所以 offset 可能從 1 開始
-      const offset = (cells[0] === '>' || cells[0] === '') ? 1 : 0;
-      allRaw.push({
-        application_date:  cells[0 + offset] || '',
-        insurance_company: cells[1 + offset] || '',
-        policy_number:     cells[2 + offset] || '',
-        owner_name:        cells[3 + offset] || '',
-        owner_id:          cells[4 + offset] || '',
-        insured_name:      cells[5 + offset] || '',
-        insured_id:        cells[6 + offset] || '',
-        policy_status:     cells[7 + offset] || '',
-        effective_date:    cells[8 + offset] || '',
-        issue_date:        cells[9 + offset] || '',
-        receipt_date:      cells[10 + offset] || '',
-        payment_freq:      cells[11 + offset] || '',
-        payment_method:    cells[12 + offset] || '',
-        main_premium:      cells[13 + offset] || '',
-        rider_premium:     cells[14 + offset] || '',
+    // ── 批次展開所有列，取得保單名稱 ───────────────────────────
+    if (!NO_EXPAND) {
+      const expandedCount = await page.evaluate(() => {
+        // DevExpress Blazor 的展開按鈕：第一欄的 button（aria-expanded 或單純小按鈕）
+        const btns = [
+          ...document.querySelectorAll(
+            'table tbody tr td:first-child button, ' +
+            'table tbody tr button[aria-expanded], ' +
+            'table tbody tr button[class*="expand"], ' +
+            'table tbody tr .dxbl-grid-expand-button'
+          )
+        ].filter(b => !b.disabled);
+        btns.forEach(b => b.click());
+        return btns.length;
       });
+
+      if (expandedCount > 0) {
+        process.stdout.write(`    展開 ${expandedCount} 列...`);
+        await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(800);
+        console.log(' ✓');
+      }
     }
+
+    // ── DEBUG：印出第一列展開後的 detail row HTML ──────────────
+    if (DBG_EXPAND && pageNum === 1) {
+      const detailHtml = await page.evaluate(() => {
+        // 找可能是 detail row 的 tr
+        const allTrs = [...document.querySelectorAll('table tbody tr')];
+        const details = allTrs.filter(tr =>
+          tr.classList.toString().includes('detail') ||
+          tr.querySelector('[colspan]') ||
+          (tr.querySelectorAll('td').length === 1 && tr.querySelector('td')?.colSpan > 3)
+        );
+        return details.slice(0, 2).map(tr => ({
+          class: tr.className,
+          html: tr.outerHTML.slice(0, 3000),
+          text: tr.innerText.slice(0, 500),
+        }));
+      });
+      console.log('\n🔍 展開 Detail Row HTML：');
+      detailHtml.forEach((d, i) =>
+        console.log(`\n[Detail ${i + 1}] class="${d.class}"\nText: ${d.text}\n---\n${d.html}`)
+      );
+      await browser.close();
+      process.exit(0);
+    }
+
+    // ── 爬取所有列（主列 + detail 配對）─────────────────────────
+    const pageRows = await page.evaluate((noExpand) => {
+      const result = [];
+      const trs = [...document.querySelectorAll('table tbody tr')];
+      let i = 0;
+
+      while (i < trs.length) {
+        const tr = trs[i];
+        const tds = [...tr.querySelectorAll('td')];
+        const texts = tds.map(td => (td.innerText || '').trim());
+
+        // 跳過欄位數太少的列（header、空列）
+        if (texts.length < 5) { i++; continue; }
+
+        // 判斷是否有展開按鈕（第一欄含 button 且文字短）
+        const firstHasBtn = !!tds[0]?.querySelector('button');
+        const offset = firstHasBtn ? 1 : 0;
+
+        // 跳過 detail row（自己判斷：colspan > 5 或 class 含 detail）
+        const isDetailRow =
+          tr.className.includes('detail') ||
+          (tds.length === 1 && (tds[0].colSpan || 1) > 5) ||
+          tr.querySelector('[colspan]')?.colSpan > 5;
+        if (isDetailRow) { i++; continue; }
+
+        // 建立主要資料
+        const row = {
+          application_date:  texts[0 + offset] || '',
+          insurance_company: texts[1 + offset] || '',
+          policy_number:     texts[2 + offset] || '',
+          owner_name:        texts[3 + offset] || '',
+          owner_id:          texts[4 + offset] || '',
+          insured_name:      texts[5 + offset] || '',
+          insured_id:        texts[6 + offset] || '',
+          policy_status:     texts[7 + offset] || '',
+          effective_date:    texts[8 + offset] || '',
+          issue_date:        texts[9 + offset] || '',
+          receipt_date:      texts[10 + offset] || '',
+          payment_freq:      texts[11 + offset] || '',
+          payment_method:    texts[12 + offset] || '',
+          main_premium:      texts[13 + offset] || '',
+          rider_premium:     texts[14 + offset] || '',
+          policy_name:       null,
+          rider_lines:       [],
+        };
+
+        // 嘗試從下一列（detail row）提取保單名稱和附約
+        if (!noExpand && i + 1 < trs.length) {
+          const nextTr = trs[i + 1];
+          const nextIsDetail =
+            nextTr.className.includes('detail') ||
+            (nextTr.querySelectorAll('td').length === 1 &&
+             ((nextTr.querySelector('td')?.colSpan || 1) > 5 ||
+              nextTr.querySelector('td')?.getAttribute('colspan') > 5)) ||
+            nextTr.querySelector('[colspan]')?.colSpan > 5;
+
+          if (nextIsDetail) {
+            const detailText = (nextTr.innerText || '').trim();
+            const lines = detailText.split('\n').map(l => l.trim()).filter(Boolean);
+
+            // 嘗試多種 pattern 提取保單名稱
+            const namePatterns = [
+              /保單名稱[：:\s]*(.+)/,
+              /險種名稱[：:\s]*(.+)/,
+              /商品名稱[：:\s]*(.+)/,
+              /保險商品[：:\s]*(.+)/,
+            ];
+            for (const pat of namePatterns) {
+              const m = detailText.match(pat);
+              if (m) {
+                row.policy_name = m[1].trim().split('\n')[0].trim();
+                break;
+              }
+            }
+            // 若無 label，把第一行非空文字當保單名稱
+            if (!row.policy_name && lines.length > 0) {
+              const firstLine = lines[0];
+              // 排除看起來像日期、金額、ID 的文字
+              if (!/^\d{2,3}\/\d{2}/.test(firstLine) && !/^[\d,]+$/.test(firstLine)) {
+                row.policy_name = firstLine;
+              }
+            }
+            row.rider_lines = lines;
+            i += 2; // 跳過 detail row
+            result.push(row);
+            continue;
+          }
+        }
+
+        result.push(row);
+        i++;
+      }
+      return result;
+    }, NO_EXPAND);
+
+    allRaw.push(...pageRows);
+    console.log(`    本頁 ${pageRows.length} 筆（含保單名稱：${pageRows.filter(r => r.policy_name).length} 筆）`);
 
     // 已爬完所有頁？
     if (pageNum >= totalPages) break;
@@ -407,8 +522,14 @@ async function main() {
   console.log(`💾 原始資料已儲存：${OUTPUT_FILE}`);
 
   if (DRY_RUN) {
-    console.log('\n[dry-run] 不寫入 Supabase，以下是前 3 筆轉換結果：');
-    console.log(JSON.stringify(allRaw.slice(0, 3).map(buildRow), null, 2));
+    console.log('\n[dry-run] 不寫入 Supabase，以下是前 3 筆原始資料：');
+    allRaw.slice(0, 3).forEach((r, i) => {
+      console.log(`\n[${i + 1}] ${r.owner_name} / ${r.insurance_company} / ${r.policy_number}`);
+      console.log(`  保單名稱: ${r.policy_name || '（未取得）'}`);
+      console.log(`  附約行數: ${r.rider_lines?.length || 0}`);
+      if (r.rider_lines?.length) console.log('  附約內容:', r.rider_lines.slice(0, 5).join(' | '));
+      console.log('  DB row:', JSON.stringify(buildRow(r), null, 2));
+    });
     return;
   }
 
