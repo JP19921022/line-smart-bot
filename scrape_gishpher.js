@@ -64,6 +64,19 @@ function parseFreq(freqText) {
   return 3;
 }
 
+// ── 扣款方式轉代碼（smallint）────────────────────────────────
+function parseDeductionMethod(str) {
+  const s = (str || '').trim();
+  if (s === '轉帳' || s === '銀行轉帳') return 1;
+  if (s === '信用卡') return 2;
+  if (s === '支票') return 3;
+  if (s === 'ATM') return 4;
+  if (s === '現金') return 5;
+  if (s === '自動扣款') return 1;
+  if (!s || s === '-') return null;
+  return null; // 未知的不寫入，避免型別錯誤
+}
+
 // ── 金額解析 ─────────────────────────────────────────────────
 function parseAmount(str) {
   if (!str || str.trim() === '' || str.trim() === '-') return null;
@@ -93,7 +106,7 @@ function buildRow(raw) {
     currency:             1, // 台幣
     main_premium:         parseAmount(raw.main_premium),
     payment_frequency:    parseFreq(raw.payment_freq),
-    deduction_method:     raw.payment_method || null,
+    deduction_method:     parseDeductionMethod(raw.payment_method),
     // 附約保費暫存於 term_rider_prem（未細分）
     term_rider_prem:      parseAmount(raw.rider_premium),
     // 空陣列欄位
@@ -115,13 +128,27 @@ async function main() {
   }
 
   console.log(`🚀 啟動瀏覽器（headless: ${HEADLESS}）...`);
-  const browser = await chromium.launch({ headless: HEADLESS, slowMo: HEADLESS ? 0 : 50 });
-  const ctx  = await browser.newContext({ locale: 'zh-TW', viewport: { width: 1280, height: 900 } });
+  const browser = await chromium.launch({
+    headless: HEADLESS,
+    slowMo: HEADLESS ? 50 : 50,
+    args: [
+      '--no-sandbox',
+      '--disable-blink-features=AutomationControlled', // 避免被偵測為 bot
+      '--disable-dev-shm-usage',
+    ],
+  });
+  const ctx  = await browser.newContext({
+    locale: 'zh-TW',
+    viewport: { width: 1280, height: 900 },
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  });
   const page = await ctx.newPage();
 
   // ── Step 1: 登入 ────────────────────────────────────────────
   console.log('🔐 登入中...');
   await page.goto(`${BASE_URL}/Login`, { waitUntil: 'networkidle' });
+  // 確保頁面完全渲染（headless 下可能需要額外等待）
+  await page.waitForTimeout(1500);
 
   // 嘗試多種 selector 找帳號欄
   const usernameSelectors = ['input[name="username"]', 'input[name="account"]', 'input[name="UserName"]',
@@ -412,12 +439,21 @@ async function main() {
     }
   }
 
-  // 嘗試補上 customer_id 關聯
+  // 嘗試補上 customer_id 關聯（透過 RPC，若無則略過）
   console.log('\n🔗 更新 customer_id 關聯...');
-  await sb.rpc('link_policies_to_profiles').catch(() => {
-    // 若無此 RPC，用 SQL
-    console.log('  (手動連結，請在 Supabase SQL Editor 執行 link_policies.sql)');
-  });
+  try {
+    const { error: rpcErr } = await sb.rpc('link_policies_to_profiles');
+    if (rpcErr) {
+      console.log('  ⚠️  RPC 不存在，請在 Supabase SQL Editor 手動執行：');
+      console.log('     UPDATE customer_policies p SET customer_id = c.id');
+      console.log('     FROM customer_profiles c');
+      console.log("     WHERE p.client_name = c.client_name AND p.customer_id IS NULL;");
+    } else {
+      console.log('  ✅ customer_id 關聯更新完成');
+    }
+  } catch (e) {
+    console.log('  ⚠️  RPC 略過（未設定）');
+  }
 
   console.log('\n════════════════════════════════════');
   console.log(`✅ 完成！寫入：${inserted} 筆，錯誤：${errors} 筆`);
