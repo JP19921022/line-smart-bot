@@ -102,17 +102,19 @@ async function handleBindingPostback(userId, data) {
   if (data.startsWith('policy_page:')) {
     const page = parseInt(data.split(':')[1], 10) || 0;
     const state = getState(userId);
-    if (state && state.policies) {
+    if (state && state.policies && state.policies.length > 0) {
       return buildPoliciesCarousel(state.clientName, state.policies, page);
     }
-    // 若 state 消失，重新查詢
+    // state 消失（伺服器重啟）→ 重新查詢，回到第 0 頁
     const profile = await supabasePolicies.getProfileByLineId(userId);
     if (profile) {
       const policies = await supabasePolicies.getPoliciesByCustomerId(profile.id);
-      setState(userId, { step: 'browsing', policies, clientName: profile.client_name });
-      return buildPoliciesCarousel(profile.client_name, policies, page);
+      if (policies.length > 0) {
+        setState(userId, { step: 'browsing', policies, clientName: profile.client_name });
+        return buildPoliciesCarousel(profile.client_name, policies, 0);
+      }
     }
-    return { type: 'text', text: '查詢逾時，請重新點選「查詢我的保單」。' };
+    return { type: 'text', text: '請重新點選「查詢我的保單」來查看保單列表。' };
   }
 
   if (!data.startsWith('policy_bind:')) return null;
@@ -264,6 +266,11 @@ function buildPoliciesCarousel(clientName, policies, page = 0, isFirstTime = fal
 
   if (hasMore) {
     bubbles.push(buildMoreCard(page + 1, remaining));
+  }
+
+  // 防呆：若翻頁超界（bubbles 為空），從第 0 頁重新顯示
+  if (bubbles.length === 0) {
+    return buildPoliciesCarousel(clientName, policies, 0, false);
   }
 
   const altText = isFirstTime

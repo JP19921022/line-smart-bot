@@ -310,7 +310,7 @@ async function handleEvent(event) {
   const userId = event?.source?.userId;
 
   // 觸發關鍵字 → 啟動查詢保單流程
-  if (userText === '查詢我的保單' || userText === '我的保單' || userText === '保單查詢') {
+  if (userText === '查詢我的保單' || userText === '我的保單' || userText === '保單查詢' || userText === '查看更多保單') {
     const bindMsg = await policyBinding.startPolicyQuery(userId);
     return client.replyMessage(event.replyToken, bindMsg);
   }
