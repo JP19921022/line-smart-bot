@@ -202,6 +202,7 @@ module.exports = {
   getProfileById,
   searchProfilesByName,
   bindLineUser,
+  unbindLineUser,
   verifyIdentity,
   getPoliciesByCustomerId,
   getPoliciesByLineUserId,
