@@ -14,6 +14,7 @@ const contactsBuffer = require('./contactsBuffer');
 contactsBuffer.schedule();
 const approvalQueue = require('./approvalQueue');
 const policyBinding = require('./policyBinding');
+const supabasePolicies = require('./supabasePolicies');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -315,17 +316,27 @@ async function handleEvent(event) {
     return client.replyMessage(event.replyToken, bindMsg);
   }
 
-  // 取消綁定關鍵字（不需要 state，直接呼叫專屬入口）
+  // ── 解除綁定：第一步觸發（顯示確認卡片）──────────────────────
   if (/取消綁定|解除綁定|解綁|取消帳號/.test(userText)) {
-    console.log('[unbind] keyword matched, userId:', userId);
-    try {
-      const unbindResult = await policyBinding.startUnbindFlow(userId);
-      console.log('[unbind] startUnbindFlow result type:', unbindResult?.type);
-      return client.replyMessage(event.replyToken, unbindResult);
-    } catch (e) {
-      console.error('[unbind] startUnbindFlow error:', e.message, e.stack);
-      return client.replyMessage(event.replyToken, { type: 'text', text: '解除綁定功能暫時無法使用，請稍後再試。' });
+    const unbindResult = await policyBinding.startUnbindFlow(userId);
+    return client.replyMessage(event.replyToken, unbindResult);
+  }
+
+  // ── 解除綁定：第二步確認（直接執行，不依賴 state）───────────
+  if (userText === '確認解除綁定') {
+    const profile = await supabasePolicies.getProfileByLineId(userId);
+    if (!profile) {
+      return client.replyMessage(event.replyToken, { type: 'text', text: '您目前尚未綁定任何帳號。' });
     }
+    const ok = await supabasePolicies.unbindLineUser(userId);
+    policyBinding.clearStatePublic(userId);
+    if (!ok) {
+      return client.replyMessage(event.replyToken, { type: 'text', text: '❌ 解除綁定失敗，請稍後再試或聯繫業務員。' });
+    }
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '✅ 已成功解除綁定\n\n您的 LINE 帳號已與保單資料解除連結。\n如需重新查詢保單，請點選主選單「查詢我的保單」重新驗證身份。',
+    });
   }
 
   // 綁定狀態中的文字輸入（姓名、取消）

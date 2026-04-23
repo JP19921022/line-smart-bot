@@ -847,7 +847,7 @@ function buildUnbindConfirmFlex(clientName) {
             action: {
               type: 'message',
               label: '確認解除',
-              text: '確認',
+              text: '確認解除綁定',
             },
           },
         ],
@@ -872,6 +872,7 @@ module.exports = {
   handleBindingText,
   handleBindingPostback,
   getState,
+  clearStatePublic: clearState,
   // 若其他地方有直接引用
   buildPolicySummaryFlex,
 };
