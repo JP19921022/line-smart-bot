@@ -400,7 +400,7 @@ async function handlePostbackEvent(event) {
   if (data.startsWith('policy_bind:') || data.startsWith('policy_page:') || data.startsWith('policy_unbind:')) {
     const userId = event?.source?.userId;
     const result = await policyBinding.handleBindingPostback(userId, data);
-    if (result) return client.replyMessage(event.replyToken, result);
+    if (result) return result;
   }
 
   if (data === 'action=schedule-date') {
