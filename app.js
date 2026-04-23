@@ -316,13 +316,7 @@ async function handleEvent(event) {
     return client.replyMessage(event.replyToken, bindMsg);
   }
 
-  // ── 解除綁定：第一步觸發（顯示確認卡片）──────────────────────
-  if (/取消綁定|解除綁定|解綁|取消帳號/.test(userText)) {
-    const unbindResult = await policyBinding.startUnbindFlow(userId);
-    return client.replyMessage(event.replyToken, unbindResult);
-  }
-
-  // ── 解除綁定：第二步確認（直接執行，不依賴 state）───────────
+  // ── 解除綁定：第二步確認（必須在 regex 之前，避免被攔截）──────
   if (userText === '確認解除綁定') {
     const profile = await supabasePolicies.getProfileByLineId(userId);
     if (!profile) {
@@ -335,8 +329,14 @@ async function handleEvent(event) {
     }
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: '✅ 已成功解除綁定\n\n您的 LINE 帳號已與保單資料解除連結。\n如需重新查詢保單，請點選主選單「查詢我的保單」重新驗證身份。',
+      text: '✅ 已成功解除綁定！\n\n您的 LINE 帳號已與保單資料解除連結。\n如需重新查詢保單，請輸入「我的保單」重新驗證身份。',
     });
+  }
+
+  // ── 解除綁定：第一步觸發（顯示確認卡片）──────────────────────
+  if (/取消綁定|解除綁定|解綁|取消帳號/.test(userText)) {
+    const unbindResult = await policyBinding.startUnbindFlow(userId);
+    return client.replyMessage(event.replyToken, unbindResult);
   }
 
   // 綁定狀態中的文字輸入（姓名、取消）
