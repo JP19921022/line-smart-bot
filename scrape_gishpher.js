@@ -351,11 +351,13 @@ async function main() {
         const firstHasBtn = !!tds[0]?.querySelector('button');
         const offset = firstHasBtn ? 1 : 0;
 
-        // 跳過 detail row（自己判斷：colspan > 5 或 class 含 detail）
+        // 偵測 detail row：DevExpress Blazor 用 aria-label="Cell with details" 或 dxbl-grid-detail-cell
         const isDetailRow =
+          !!tr.querySelector('td.dxbl-grid-detail-cell') ||
+          !!tr.querySelector('td[aria-label="Cell with details"]') ||
           tr.className.includes('detail') ||
-          (tds.length === 1 && (tds[0].colSpan || 1) > 5) ||
-          tr.querySelector('[colspan]')?.colSpan > 5;
+          tr.className.includes('empty-row') ||
+          (tds.length <= 2 && parseInt(tds[0]?.getAttribute('colspan') || '0') > 5);
         if (isDetailRow) { i++; continue; }
 
         // 建立主要資料
@@ -379,43 +381,52 @@ async function main() {
           rider_lines:       [],
         };
 
-        // 嘗試從下一列（detail row）提取保單名稱和附約
+        // 嘗試從緊接的 detail row 提取保單名稱和附約
         if (!noExpand && i + 1 < trs.length) {
           const nextTr = trs[i + 1];
           const nextIsDetail =
+            !!nextTr.querySelector('td.dxbl-grid-detail-cell') ||
+            !!nextTr.querySelector('td[aria-label="Cell with details"]') ||
             nextTr.className.includes('detail') ||
-            (nextTr.querySelectorAll('td').length === 1 &&
-             ((nextTr.querySelector('td')?.colSpan || 1) > 5 ||
-              nextTr.querySelector('td')?.getAttribute('colspan') > 5)) ||
-            nextTr.querySelector('[colspan]')?.colSpan > 5;
+            (nextTr.querySelectorAll('td').length <= 2 &&
+             parseInt(nextTr.querySelector('td')?.getAttribute('colspan') || '0') > 5);
 
           if (nextIsDetail) {
-            const detailText = (nextTr.innerText || '').trim();
-            const lines = detailText.split('\n').map(l => l.trim()).filter(Boolean);
+            // 取 detail cell 的文字（用 dxbl-grid-detail-cell 精確定位）
+            const detailCell =
+              nextTr.querySelector('td.dxbl-grid-detail-cell') ||
+              nextTr.querySelector('td[aria-label="Cell with details"]') ||
+              nextTr.querySelector('td');
+            const detailText = (detailCell?.innerText || nextTr.innerText || '').trim();
 
-            // 嘗試多種 pattern 提取保單名稱
-            const namePatterns = [
-              /保單名稱[：:\s]*(.+)/,
-              /險種名稱[：:\s]*(.+)/,
-              /商品名稱[：:\s]*(.+)/,
-              /保險商品[：:\s]*(.+)/,
-            ];
-            for (const pat of namePatterns) {
-              const m = detailText.match(pat);
-              if (m) {
-                row.policy_name = m[1].trim().split('\n')[0].trim();
-                break;
+            // ── 從「投保商品 → 主約」區塊提取保單名稱 ───────────────
+            // 資料列格式：本人 [姓名] [商品代號LQA1] [商品名稱（中文）] [年期] [保額]...
+            const productIdx = detailText.indexOf('投保商品');
+            if (productIdx >= 0) {
+              const productText = detailText.slice(productIdx);
+
+              // 主約保單名稱
+              const mainIdx = productText.indexOf('主約');
+              if (mainIdx >= 0) {
+                const mainText = productText.slice(mainIdx);
+                // 商品代號 pattern（大寫英數）後接中文商品名稱，後接年期數字
+                const nameMatch = mainText.match(
+                  /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/
+                );
+                if (nameMatch) row.policy_name = nameMatch[1].trim();
+              }
+
+              // 附約名稱列表
+              const riderIdx = productText.indexOf('附約');
+              if (riderIdx >= 0) {
+                const riderText = productText.slice(riderIdx + 2);
+                const riderMatches = [...riderText.matchAll(
+                  /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/g
+                )];
+                row.rider_lines = riderMatches.map(m => m[1].trim()).filter(Boolean);
               }
             }
-            // 若無 label，把第一行非空文字當保單名稱
-            if (!row.policy_name && lines.length > 0) {
-              const firstLine = lines[0];
-              // 排除看起來像日期、金額、ID 的文字
-              if (!/^\d{2,3}\/\d{2}/.test(firstLine) && !/^[\d,]+$/.test(firstLine)) {
-                row.policy_name = firstLine;
-              }
-            }
-            row.rider_lines = lines;
+
             i += 2; // 跳過 detail row
             result.push(row);
             continue;
