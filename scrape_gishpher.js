@@ -182,27 +182,47 @@ async function main() {
   console.log('✅ 已進入壽險保單查詢');
 
   // ── Step 3: 調整每頁筆數為最大 ───────────────────────────────
-  try {
-    // 找頁面大小下拉選單（通常在右下角）
-    const pageSizeSelector = 'select[class*="page"], select[title*="頁面"], .page-size select, select:last-of-type';
-    const pageSizeEl = page.locator(pageSizeSelector).last();
-    if (await pageSizeEl.isVisible({ timeout: 3000 })) {
-      // 嘗試選最大值
-      for (const val of ['100', '50', '30']) {
-        try { await pageSizeEl.selectOption(val, { timeout: 2000 }); break; } catch {}
+  const pageSizeChanged = await page.evaluate(() => {
+    // 找所有 select，找出含有數字 option 的（頁面大小選單）
+    const selects = [...document.querySelectorAll('select')];
+    for (const sel of selects) {
+      const opts = [...sel.options].map(o => o.value.trim()).filter(v => /^\d+$/.test(v));
+      if (opts.length > 0) {
+        const maxVal = Math.max(...opts.map(Number));
+        if (maxVal > 15) {
+          sel.value = String(maxVal);
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return maxVal;
+        }
       }
-      await page.waitForTimeout(1000);
-      console.log('📄 已調整每頁顯示筆數');
     }
-  } catch { /* 無法調整，繼續預設 */ }
+    return 0;
+  });
+  if (pageSizeChanged) {
+    console.log(`📄 每頁筆數設為 ${pageSizeChanged}，等待重新載入...`);
+    await page.waitForTimeout(2000);
+  }
+
+  // ── 取得總頁數 ─────────────────────────────────────────────────
+  const totalPages = await page.evaluate(() => {
+    // 嘗試找 "X of Y" 格式
+    const allText = document.body.innerText;
+    const m = allText.match(/of\s+(\d+)/);
+    if (m) return parseInt(m[1]);
+    // 嘗試找最後一個頁碼按鈕
+    const btns = [...document.querySelectorAll('button, a, span')];
+    const nums = btns.map(el => parseInt(el.textContent.trim())).filter(n => !isNaN(n) && n > 0);
+    return nums.length ? Math.max(...nums) : 1;
+  });
+  console.log(`📋 總頁數：${totalPages}`);
 
   // ── Step 4: 爬取所有頁面 ─────────────────────────────────────
   const allRaw = [];
   let pageNum = 1;
 
   while (true) {
-    await page.waitForTimeout(600);
-    console.log(`  爬取第 ${pageNum} 頁...`);
+    await page.waitForTimeout(800);
+    console.log(`  爬取第 ${pageNum} / ${totalPages} 頁...`);
 
     // 取得所有資料列（跳過 header）
     const rows = await page.$$eval('table tbody tr', (trs) =>
@@ -238,23 +258,55 @@ async function main() {
       });
     }
 
-    // 嘗試前往下一頁
-    const nextBtn = page.locator('button[aria-label="next"], a[aria-label="next page"], .next-page, button:has-text("›"), button:has-text(">>")').last();
-    const isDisabled = await nextBtn.isDisabled().catch(() => true);
-    if (isDisabled) break;
-
-    // 也檢查頁碼輸入框
-    const pageInput = page.locator('input[type="number"], input[class*="page"]').first();
-    const totalPagesText = await page.locator('text=/of \\d+/').first().textContent().catch(() => '');
-    const totalPages = parseInt(totalPagesText.replace('of', '').trim()) || 999;
+    // 已爬完所有頁？
     if (pageNum >= totalPages) break;
 
-    await nextBtn.click().catch(async () => {
-      // fallback: 直接設定頁碼
-      await pageInput.fill(String(pageNum + 1));
-      await pageInput.press('Enter');
+    // ── 翻到下一頁（多重備援策略）─────────────────────────────────
+    const clicked = await page.evaluate(() => {
+      // 策略 A：找文字剛好是 ">" 的可點擊元素
+      const all = [...document.querySelectorAll('button, a, [role="button"], td, th, span, div')];
+      const nextEl = all.find(el => {
+        const t = (el.innerText || el.textContent || '').trim();
+        return (t === '>' || t === '›' || t === '▶') && !el.disabled && el.offsetParent !== null;
+      });
+      if (nextEl) { nextEl.click(); return 'A'; }
+
+      // 策略 B：找 class 含 next 但不含 last 的元素
+      const byClass = document.querySelector('[class*="next"]:not([class*="last"]):not([disabled])');
+      if (byClass) { byClass.click(); return 'B'; }
+
+      return null;
     });
-    await page.waitForTimeout(800);
+
+    if (!clicked) {
+      // 策略 C：用 Playwright locator（含 ›、>>、> 等不同字元）
+      let advanced = false;
+      for (const sel of ['button:text(">")', 'a:text(">")', '[class*="next"]']) {
+        try {
+          const el = page.locator(sel).last();
+          if (await el.isVisible({ timeout: 1000 }) && !(await el.isDisabled())) {
+            await el.click();
+            advanced = true;
+            break;
+          }
+        } catch {}
+      }
+      if (!advanced) {
+        // 策略 D：頁碼 input 直接填下一頁
+        const pageInput = page.locator('input[type="number"], input[type="text"][class*="page"]').first();
+        if (await pageInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await pageInput.fill(String(pageNum + 1));
+          await pageInput.press('Enter');
+        } else {
+          console.log('  ⚠️ 找不到翻頁按鈕，停止');
+          break;
+        }
+      }
+    } else {
+      console.log(`  (翻頁策略 ${clicked})`);
+    }
+
+    await page.waitForTimeout(1000);
     pageNum++;
   }
 
