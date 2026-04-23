@@ -162,6 +162,18 @@ function buildRow(raw) {
 
 // ── 主流程 ────────────────────────────────────────────────────
 async function main() {
+  // ── --from-cache 模式：直接從 JSON 重新同步，不重爬 ──────────
+  if (process.argv.includes('--from-cache')) {
+    if (!fs.existsSync(OUTPUT_FILE)) {
+      console.error(`❌ 找不到 cache 檔案：${OUTPUT_FILE}，請先完整爬取`);
+      process.exit(1);
+    }
+    const allRaw = JSON.parse(fs.readFileSync(OUTPUT_FILE, 'utf-8'));
+    console.log(`📂 從 cache 載入 ${allRaw.length} 筆，準備同步...`);
+    await syncToSupabase(allRaw);
+    return;
+  }
+
   if (!USERNAME || !PASSWORD) {
     console.error('❌ 請先在 .env 設定 GISHPHER_USERNAME 和 GISHPHER_PASSWORD');
     process.exit(1);
@@ -535,10 +547,13 @@ async function main() {
       if (r.rider_lines?.length) console.log('  附約內容:', r.rider_lines.slice(0, 5).join(' | '));
       console.log('  DB row:', JSON.stringify(buildRow(r), null, 2));
     });
-    return;
+  } else {
+    await syncToSupabase(allRaw);
   }
+}
 
-  // ── Step 6: 同步至 Supabase ───────────────────────────────────
+// ── Supabase 同步（可獨立呼叫）──────────────────────────────────
+async function syncToSupabase(allRaw) {
   const sb = require('./supabaseClient');
   if (!sb) { console.error('❌ supabaseClient 未設定'); return; }
 
@@ -547,9 +562,8 @@ async function main() {
     .filter((r) => r.policy_number && r.insurance_company)
     .map(buildRow);
 
-  // 分批 upsert（每批 50 筆）
   const BATCH = 50;
-  let inserted = 0, updated = 0, errors = 0;
+  let inserted = 0, errors = 0;
 
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
@@ -565,7 +579,6 @@ async function main() {
     }
   }
 
-  // 嘗試補上 customer_id 關聯（透過 RPC，若無則略過）
   console.log('\n🔗 更新 customer_id 關聯...');
   try {
     const { error: rpcErr } = await sb.rpc('link_policies_to_profiles');
