@@ -285,162 +285,117 @@ async function main() {
     await page.waitForTimeout(800);
     console.log(`  爬取第 ${pageNum} / ${totalPages} 頁...`);
 
-    // ── 批次展開所有列，取得保單名稱 ───────────────────────────
-    if (!NO_EXPAND) {
-      const expandedCount = await page.evaluate(() => {
-        // DevExpress Blazor 的展開按鈕：第一欄的 button（aria-expanded 或單純小按鈕）
-        const btns = [
-          ...document.querySelectorAll(
-            'table tbody tr td:first-child button, ' +
-            'table tbody tr button[aria-expanded], ' +
-            'table tbody tr button[class*="expand"], ' +
-            'table tbody tr .dxbl-grid-expand-button'
-          )
-        ].filter(b => !b.disabled);
-        btns.forEach(b => b.click());
-        return btns.length;
-      });
+    // ── 取得本頁所有主列基本資料（不展開，過濾巢狀 tr）──────────
+    // 關鍵：用 .closest() 排除 detail cell 內的巢狀 table 的 tr
+    const initialRows = await page.evaluate(() =>
+      [...document.querySelectorAll('table tbody tr')]
+        .filter(tr => {
+          if (tr.closest('td.dxbl-grid-detail-cell')) return false; // 排除巢狀 tr
+          if (tr.className.includes('empty-row') || tr.className.includes('footer')) return false;
+          if (tr.querySelector('td.dxbl-grid-detail-cell')) return false; // detail row 本身
+          return tr.querySelectorAll('td').length >= 5;
+        })
+        .map(tr => {
+          const tds = [...tr.querySelectorAll('td')];
+          const texts = tds.map(td => (td.innerText || '').trim());
+          const offset = !!tds[0]?.querySelector('button') ? 1 : 0;
+          return { hasExpandBtn: !!tds[0]?.querySelector('button'), texts, offset };
+        })
+    );
 
-      if (expandedCount > 0) {
-        process.stdout.write(`    展開 ${expandedCount} 列...`);
-        await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
-        await page.waitForTimeout(800);
-        console.log(' ✓');
-      }
-    }
+    // ── 逐列展開（DevExpress 是單列展開模式，批次點擊只留最後一列）
+    const pageRows = [];
+    let nameCount = 0;
+    for (const info of initialRows) {
+      const { texts, offset, hasExpandBtn } = info;
+      const policyNumber = texts[2 + offset] || '';
 
-    // ── DEBUG：印出第一列展開後的 detail row HTML ──────────────
-    if (DBG_EXPAND && pageNum === 1) {
-      const detailHtml = await page.evaluate(() => {
-        // 找可能是 detail row 的 tr
-        const allTrs = [...document.querySelectorAll('table tbody tr')];
-        const details = allTrs.filter(tr =>
-          tr.classList.toString().includes('detail') ||
-          tr.querySelector('[colspan]') ||
-          (tr.querySelectorAll('td').length === 1 && tr.querySelector('td')?.colSpan > 3)
-        );
-        return details.slice(0, 2).map(tr => ({
-          class: tr.className,
-          html: tr.outerHTML.slice(0, 3000),
-          text: tr.innerText.slice(0, 500),
-        }));
-      });
-      console.log('\n🔍 展開 Detail Row HTML：');
-      detailHtml.forEach((d, i) =>
-        console.log(`\n[Detail ${i + 1}] class="${d.class}"\nText: ${d.text}\n---\n${d.html}`)
-      );
-      await browser.close();
-      process.exit(0);
-    }
+      const row = {
+        application_date:  texts[0 + offset] || '',
+        insurance_company: texts[1 + offset] || '',
+        policy_number:     policyNumber,
+        owner_name:        texts[3 + offset] || '',
+        owner_id:          texts[4 + offset] || '',
+        insured_name:      texts[5 + offset] || '',
+        insured_id:        texts[6 + offset] || '',
+        policy_status:     texts[7 + offset] || '',
+        effective_date:    texts[8 + offset] || '',
+        issue_date:        texts[9 + offset] || '',
+        receipt_date:      texts[10 + offset] || '',
+        payment_freq:      texts[11 + offset] || '',
+        payment_method:    texts[12 + offset] || '',
+        main_premium:      texts[13 + offset] || '',
+        rider_premium:     texts[14 + offset] || '',
+        policy_name:       null,
+        rider_lines:       [],
+      };
 
-    // ── 爬取所有列（主列 + detail 配對）─────────────────────────
-    const pageRows = await page.evaluate((noExpand) => {
-      const result = [];
-      const trs = [...document.querySelectorAll('table tbody tr')];
-      let i = 0;
-
-      while (i < trs.length) {
-        const tr = trs[i];
-        const tds = [...tr.querySelectorAll('td')];
-        const texts = tds.map(td => (td.innerText || '').trim());
-
-        // 跳過欄位數太少的列（header、空列）
-        if (texts.length < 5) { i++; continue; }
-
-        // 判斷是否有展開按鈕（第一欄含 button 且文字短）
-        const firstHasBtn = !!tds[0]?.querySelector('button');
-        const offset = firstHasBtn ? 1 : 0;
-
-        // 偵測 detail row：DevExpress Blazor 用 aria-label="Cell with details" 或 dxbl-grid-detail-cell
-        const isDetailRow =
-          !!tr.querySelector('td.dxbl-grid-detail-cell') ||
-          !!tr.querySelector('td[aria-label="Cell with details"]') ||
-          tr.className.includes('detail') ||
-          tr.className.includes('empty-row') ||
-          (tds.length <= 2 && parseInt(tds[0]?.getAttribute('colspan') || '0') > 5);
-        if (isDetailRow) { i++; continue; }
-
-        // 建立主要資料
-        const row = {
-          application_date:  texts[0 + offset] || '',
-          insurance_company: texts[1 + offset] || '',
-          policy_number:     texts[2 + offset] || '',
-          owner_name:        texts[3 + offset] || '',
-          owner_id:          texts[4 + offset] || '',
-          insured_name:      texts[5 + offset] || '',
-          insured_id:        texts[6 + offset] || '',
-          policy_status:     texts[7 + offset] || '',
-          effective_date:    texts[8 + offset] || '',
-          issue_date:        texts[9 + offset] || '',
-          receipt_date:      texts[10 + offset] || '',
-          payment_freq:      texts[11 + offset] || '',
-          payment_method:    texts[12 + offset] || '',
-          main_premium:      texts[13 + offset] || '',
-          rider_premium:     texts[14 + offset] || '',
-          policy_name:       null,
-          rider_lines:       [],
-        };
-
-        // 嘗試從緊接的 detail row 提取保單名稱和附約
-        if (!noExpand && i + 1 < trs.length) {
-          const nextTr = trs[i + 1];
-          const nextIsDetail =
-            !!nextTr.querySelector('td.dxbl-grid-detail-cell') ||
-            !!nextTr.querySelector('td[aria-label="Cell with details"]') ||
-            nextTr.className.includes('detail') ||
-            (nextTr.querySelectorAll('td').length <= 2 &&
-             parseInt(nextTr.querySelector('td')?.getAttribute('colspan') || '0') > 5);
-
-          if (nextIsDetail) {
-            // 取 detail cell 的文字（用 dxbl-grid-detail-cell 精確定位）
-            const detailCell =
-              nextTr.querySelector('td.dxbl-grid-detail-cell') ||
-              nextTr.querySelector('td[aria-label="Cell with details"]') ||
-              nextTr.querySelector('td');
-            const detailText = (detailCell?.innerText || nextTr.innerText || '').trim();
-
-            // ── 從「投保商品 → 主約」區塊提取保單名稱 ───────────────
-            // 資料列格式：本人 [姓名] [商品代號LQA1] [商品名稱（中文）] [年期] [保額]...
-            const productIdx = detailText.indexOf('投保商品');
-            if (productIdx >= 0) {
-              const productText = detailText.slice(productIdx);
-
-              // 主約保單名稱
-              const mainIdx = productText.indexOf('主約');
-              if (mainIdx >= 0) {
-                const mainText = productText.slice(mainIdx);
-                // 商品代號 pattern（大寫英數）後接中文商品名稱，後接年期數字
-                const nameMatch = mainText.match(
-                  /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/
-                );
-                if (nameMatch) row.policy_name = nameMatch[1].trim();
-              }
-
-              // 附約名稱列表
-              const riderIdx = productText.indexOf('附約');
-              if (riderIdx >= 0) {
-                const riderText = productText.slice(riderIdx + 2);
-                const riderMatches = [...riderText.matchAll(
-                  /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/g
-                )];
-                row.rider_lines = riderMatches.map(m => m[1].trim()).filter(Boolean);
-              }
+      if (!NO_EXPAND && hasExpandBtn && policyNumber) {
+        // 點擊本列展開按鈕（依保單號碼精確定位，不受 DevExpress 重排影響）
+        await page.evaluate((polNum) => {
+          const trs = [...document.querySelectorAll('table tbody tr')]
+            .filter(tr => !tr.closest('td.dxbl-grid-detail-cell'));
+          for (const tr of trs) {
+            const tds = [...tr.querySelectorAll('td')];
+            if (tds.length < 5) continue;
+            const texts = tds.map(td => td.innerText.trim());
+            const off = !!tds[0]?.querySelector('button') ? 1 : 0;
+            if (texts[2 + off] === polNum) {
+              const btn = tds[0]?.querySelector('button');
+              if (btn) { btn.click(); break; }
             }
+          }
+        }, policyNumber);
 
-            i += 2; // 跳過 detail row
-            result.push(row);
-            continue;
+        // 等 Blazor 渲染 detail row（~500–700ms）
+        await page.waitForTimeout(650);
+
+        // 取該列下方的 detail cell 文字
+        const detailText = await page.evaluate((polNum) => {
+          const trs = [...document.querySelectorAll('table tbody tr')]
+            .filter(tr => !tr.closest('td.dxbl-grid-detail-cell'));
+          for (let i = 0; i < trs.length; i++) {
+            const tds = [...trs[i].querySelectorAll('td')];
+            if (tds.length < 5) continue;
+            const texts = tds.map(td => td.innerText.trim());
+            const off = !!tds[0]?.querySelector('button') ? 1 : 0;
+            if (texts[2 + off] !== polNum) continue;
+            const next = trs[i + 1];
+            const cell = next?.querySelector('td.dxbl-grid-detail-cell, td[aria-label="Cell with details"]');
+            return cell?.innerText || null;
+          }
+          return null;
+        }, policyNumber);
+
+        if (detailText) {
+          const productIdx = detailText.indexOf('投保商品');
+          if (productIdx >= 0) {
+            const productText = detailText.slice(productIdx);
+            // 主約商品名稱：大寫英數商品代號 → 中文名稱 → 年期數字
+            const mainIdx = productText.indexOf('主約');
+            if (mainIdx >= 0) {
+              const nameMatch = productText.slice(mainIdx).match(
+                /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/
+              );
+              if (nameMatch) { row.policy_name = nameMatch[1].trim(); nameCount++; }
+            }
+            // 附約名稱
+            const riderIdx = productText.indexOf('附約');
+            if (riderIdx >= 0) {
+              const riderMatches = [...productText.slice(riderIdx + 2).matchAll(
+                /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/g
+              )];
+              row.rider_lines = riderMatches.map(m => m[1].trim()).filter(Boolean);
+            }
           }
         }
-
-        result.push(row);
-        i++;
       }
-      return result;
-    }, NO_EXPAND);
+
+      pageRows.push(row);
+    }
 
     allRaw.push(...pageRows);
-    console.log(`    本頁 ${pageRows.length} 筆（含保單名稱：${pageRows.filter(r => r.policy_name).length} 筆）`);
+    console.log(`    本頁 ${pageRows.length} 筆（含保單名稱：${nameCount} 筆）`);
 
     // 已爬完所有頁？
     if (pageNum >= totalPages) break;
