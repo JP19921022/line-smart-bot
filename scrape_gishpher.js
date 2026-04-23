@@ -181,9 +181,10 @@ async function main() {
   }
   console.log('✅ 已進入壽險保單查詢');
 
-  // ── Step 3: 調整每頁筆數為最大 ───────────────────────────────
+  // ── Step 3: 嘗試調整每頁筆數為最大 ───────────────────────────
+  // DevExpress Blazor 不用 <select>，改用自定義組件
+  // 先試 native select，再試點擊 dxbl 組件
   const pageSizeChanged = await page.evaluate(() => {
-    // 找所有 select，找出含有數字 option 的（頁面大小選單）
     const selects = [...document.querySelectorAll('select')];
     for (const sel of selects) {
       const opts = [...sel.options].map(o => o.value.trim()).filter(v => /^\d+$/.test(v));
@@ -201,17 +202,47 @@ async function main() {
   if (pageSizeChanged) {
     console.log(`📄 每頁筆數設為 ${pageSizeChanged}，等待重新載入...`);
     await page.waitForTimeout(2000);
+  } else {
+    // 嘗試用 DevExpress Blazor page size 下拉（dxbl-select 或 combobox）
+    try {
+      const pageSizeInput = page.locator('dxbl-pager input, dxbl-select input, [aria-label*="Page size"], [aria-label*="per page"]').first();
+      if (await pageSizeInput.isVisible({ timeout: 2000 })) {
+        await pageSizeInput.selectOption?.({ label: '50' }).catch(() => {});
+      }
+    } catch {}
   }
 
-  // ── 取得總頁數 ─────────────────────────────────────────────────
+  // ── 取得總頁數（支援 DevExpress Blazor dxbl-pager）──────────────
   const totalPages = await page.evaluate(() => {
-    // 嘗試找 "X of Y" 格式
+    // DevExpress Blazor：在 dxbl-pager 內找頁碼輸入框的 aria-label "Page X of Y"
+    const pager = document.querySelector('dxbl-pager');
+    if (pager) {
+      // 找 input 的 aria-label
+      const input = pager.querySelector('input');
+      if (input) {
+        const lbl = input.getAttribute('aria-label') || '';
+        const m = lbl.match(/of\s+(\d+)/i);
+        if (m) return parseInt(m[1]);
+      }
+      // 找 "Page X of Y" 文字節點
+      const text = pager.innerText || '';
+      const m2 = text.match(/of\s+(\d+)/i);
+      if (m2) return parseInt(m2[1]);
+    }
+    // Fallback：body 文字
     const allText = document.body.innerText;
     const m = allText.match(/of\s+(\d+)/);
     if (m) return parseInt(m[1]);
-    // 嘗試找最後一個頁碼按鈕
-    const btns = [...document.querySelectorAll('button, a, span')];
-    const nums = btns.map(el => parseInt(el.textContent.trim())).filter(n => !isNaN(n) && n > 0);
+    // Fallback：找頁碼按鈕
+    const btns = [...document.querySelectorAll('button[aria-label]')];
+    const pageNums = btns
+      .map(b => b.getAttribute('aria-label') || '')
+      .map(l => { const m = l.match(/^Page (\d+)$/); return m ? parseInt(m[1]) : 0; })
+      .filter(n => n > 0);
+    if (pageNums.length) return Math.max(...pageNums);
+    // 最後 fallback：找所有數字按鈕
+    const allBtns = [...document.querySelectorAll('button, a, span')];
+    const nums = allBtns.map(el => parseInt(el.textContent.trim())).filter(n => !isNaN(n) && n > 0 && n < 9999);
     return nums.length ? Math.max(...nums) : 1;
   });
   console.log(`📋 總頁數：${totalPages}`);
@@ -261,52 +292,81 @@ async function main() {
     // 已爬完所有頁？
     if (pageNum >= totalPages) break;
 
-    // ── 翻到下一頁（多重備援策略）─────────────────────────────────
-    const clicked = await page.evaluate(() => {
-      // 策略 A：找文字剛好是 ">" 的可點擊元素
-      const all = [...document.querySelectorAll('button, a, [role="button"], td, th, span, div')];
-      const nextEl = all.find(el => {
-        const t = (el.innerText || el.textContent || '').trim();
-        return (t === '>' || t === '›' || t === '▶') && !el.disabled && el.offsetParent !== null;
+    // ── DEBUG: 印出翻頁區域 HTML（只在第 1 頁做一次）────────────────
+    if (pageNum === 1 && process.argv.includes('--debug-pager')) {
+      const pagerHtml = await page.evaluate(() => {
+        const candidates = [
+          document.querySelector('dxbl-pager'),
+          document.querySelector('[class*="pager"]'),
+          document.querySelector('[class*="pagination"]'),
+          document.querySelector('nav'),
+        ].filter(Boolean);
+        return candidates.map(el => ({
+          tag: el.tagName,
+          class: el.className,
+          html: el.outerHTML.slice(0, 3000),
+        }));
       });
-      if (nextEl) { nextEl.click(); return 'A'; }
+      console.log('\n🔍 翻頁區域 HTML：');
+      pagerHtml.forEach((h, i) => console.log(`\n[候選 ${i + 1}] ${h.tag}.${h.class}:\n${h.html}`));
+      // 也印出所有 aria-label 含 "page" 的按鈕
+      const ariaButtons = await page.evaluate(() =>
+        [...document.querySelectorAll('button[aria-label]')]
+          .map(b => ({ label: b.getAttribute('aria-label'), disabled: b.disabled, class: b.className }))
+      );
+      console.log('\n🔍 所有 aria-label 按鈕：', JSON.stringify(ariaButtons, null, 2));
+      process.exit(0);
+    }
 
-      // 策略 B：找 class 含 next 但不含 last 的元素
-      const byClass = document.querySelector('[class*="next"]:not([class*="last"]):not([disabled])');
-      if (byClass) { byClass.click(); return 'B'; }
+    // ── 翻到下一頁：DevExpress Blazor 用 aria-label="Next page" ──
+    // 策略 1：aria-label（DevExpress Blazor 標準）
+    const nextBtnLocator = page.locator('button[aria-label="Next page"]');
+    const nextBtnCount = await nextBtnLocator.count();
 
-      return null;
-    });
+    if (nextBtnCount > 0) {
+      const isDisabled = await nextBtnLocator.evaluate(el =>
+        el.disabled || el.classList.contains('dxbl-disabled')
+      ).catch(() => true);
 
-    if (!clicked) {
-      // 策略 C：用 Playwright locator（含 ›、>>、> 等不同字元）
-      let advanced = false;
-      for (const sel of ['button:text(">")', 'a:text(">")', '[class*="next"]']) {
-        try {
-          const el = page.locator(sel).last();
-          if (await el.isVisible({ timeout: 1000 }) && !(await el.isDisabled())) {
-            await el.click();
-            advanced = true;
-            break;
-          }
-        } catch {}
+      if (isDisabled) {
+        console.log('  ✅ 已到最後一頁（Next page 按鈕已 disabled）');
+        break;
       }
-      if (!advanced) {
-        // 策略 D：頁碼 input 直接填下一頁
-        const pageInput = page.locator('input[type="number"], input[type="text"][class*="page"]').first();
-        if (await pageInput.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await pageInput.fill(String(pageNum + 1));
-          await pageInput.press('Enter');
+      await nextBtnLocator.click();
+      console.log('  (翻頁策略: aria-label)');
+    } else {
+      // 策略 2：頁碼 input 直接填下一頁（DevExpress 有時有輸入框）
+      const pageInput = page.locator('dxbl-pager input, input[aria-label*="Page"]').first();
+      if (await pageInput.isVisible({ timeout: 1500 }).catch(() => false)) {
+        await pageInput.click({ clickCount: 3 }).catch(async () => {
+          await pageInput.click();
+          await pageInput.press('Control+A');
+        });
+        await pageInput.fill(String(pageNum + 1));
+        await pageInput.press('Enter');
+        console.log('  (翻頁策略: page input)');
+      } else {
+        // 策略 3：JS 直接找 Next page 按鈕（含 shadow DOM 情況）
+        const jsClicked = await page.evaluate(() => {
+          const btn = document.querySelector('button[aria-label="Next page"]');
+          if (btn && !btn.disabled && !btn.classList.contains('dxbl-disabled')) {
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        if (jsClicked) {
+          console.log('  (翻頁策略: JS click aria-label)');
         } else {
           console.log('  ⚠️ 找不到翻頁按鈕，停止');
           break;
         }
       }
-    } else {
-      console.log(`  (翻頁策略 ${clicked})`);
     }
 
-    await page.waitForTimeout(1000);
+    // 等待頁面資料更新（等 table 穩定，DevExpress 用 networkidle）
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(500);
     pageNum++;
   }
 
