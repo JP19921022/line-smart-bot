@@ -54,7 +54,7 @@ async function startUnbindFlow(userId) {
   if (!profile) {
     return { type: 'text', text: '您目前尚未綁定任何帳號。' };
   }
-  setState(userId, { step: 'waiting_unbind_confirm' });
+  setState(userId, { step: 'waiting_unbind_confirm', clientName: profile.client_name });
   return buildUnbindConfirmFlex(profile.client_name);
 }
 
@@ -101,6 +101,30 @@ async function handleBindingText(userId, text) {
     return {
       type: 'text',
       text: '請點選上方的按鈕確認您的身份 ☝️\n\n或輸入「取消」重新查詢。',
+    };
+  }
+
+  // ── 解除綁定文字確認（雙重保險：postback + 文字都能觸發）──────
+  if (state.step === 'waiting_unbind_confirm') {
+    const t = text.trim();
+    if (/^(確認|確認解除|解除|yes|y)$/i.test(t)) {
+      const ok = await supabasePolicies.unbindLineUser(userId);
+      clearState(userId);
+      if (!ok) {
+        return { type: 'text', text: '❌ 解除綁定失敗，請稍後再試或聯繫業務員。' };
+      }
+      return {
+        type: 'text',
+        text: '✅ 已成功解除綁定\n\n您的 LINE 帳號已與保單資料解除連結。\n如需重新綁定，請點選主選單「查詢我的保單」。',
+      };
+    }
+    if (/^(取消|不|no|n)$/i.test(t)) {
+      clearState(userId);
+      return { type: 'text', text: '已取消，保持原綁定狀態。' };
+    }
+    return {
+      type: 'text',
+      text: `⚠️ 確認解除綁定？\n\n目前綁定帳號：${state.clientName || ''}\n\n請回覆：\n「確認」→ 解除綁定\n「取消」→ 保留綁定`,
     };
   }
 
@@ -809,10 +833,9 @@ function buildUnbindConfirmFlex(clientName) {
             height: 'sm',
             flex: 1,
             action: {
-              type: 'postback',
+              type: 'message',
               label: '取消',
-              data: 'policy_unbind:cancel',
-              displayText: '取消，保持綁定',
+              text: '取消',
             },
           },
           {
@@ -822,10 +845,9 @@ function buildUnbindConfirmFlex(clientName) {
             height: 'sm',
             flex: 1,
             action: {
-              type: 'postback',
+              type: 'message',
               label: '確認解除',
-              data: 'policy_unbind:confirm',
-              displayText: '確認解除綁定',
+              text: '確認',
             },
           },
         ],
