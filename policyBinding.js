@@ -423,15 +423,31 @@ function buildPolicyCard(p) {
   };
 }
 
-/** 若有附約資料，補充一個附約區塊 */
+/** 若有附約資料或保單名稱含保障關鍵字，補充一個保障區塊 */
 function buildCoverageSection(p) {
   const riders = [];
-  if (hasData(p.medical_coverage))    riders.push('醫療附約');
-  if (hasData(p.accident_coverage))   riders.push('意外附約');
+
+  // 優先取 JSONB 附約資料
+  if (hasData(p.medical_coverage))    riders.push('醫療');
+  if (hasData(p.accident_coverage))   riders.push('意外');
   if (hasData(p.critical_coverage))   riders.push('重大傷病');
-  if (hasData(p.disability_coverage)) riders.push('失能附約');
-  if (hasData(p.ltc_coverage))        riders.push('長照附約');
-  if (hasData(p.cancer_coverage))     riders.push('癌症附約');
+  if (hasData(p.disability_coverage)) riders.push('失能');
+  if (hasData(p.ltc_coverage))        riders.push('長照');
+  if (hasData(p.cancer_coverage))     riders.push('癌症');
+
+  // 若 JSONB 無資料，從保單名稱關鍵字推斷保障類型
+  if (riders.length === 0) {
+    const name = (p.policy_name || '') + (p.policy_category || '');
+    if (/重大傷病|重疾/.test(name))              riders.push('重大傷病');
+    if (/癌症|防癌/.test(name))                  riders.push('癌症');
+    if (/醫療|住院|實支/.test(name))             riders.push('醫療');
+    if (/意外|傷害/.test(name))                  riders.push('意外');
+    if (/失能|殘廢/.test(name))                  riders.push('失能');
+    if (/長照|長期照護/.test(name))              riders.push('長照');
+    if (/壽險|終身壽|定期壽/.test(name))         riders.push('壽險');
+    if (/年金/.test(name))                        riders.push('年金');
+    if (/儲蓄|利率變動|增額/.test(name))         riders.push('儲蓄');
+  }
 
   if (riders.length === 0) return [];
 
@@ -439,7 +455,7 @@ function buildCoverageSection(p) {
     { type: 'separator', margin: 'md' },
     {
       type: 'text',
-      text: '附約',
+      text: '保障範圍',
       size: 'xxs',
       color: '#888888',
       margin: 'md',
