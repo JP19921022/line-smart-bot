@@ -98,6 +98,9 @@ async function getPoliciesByCustomerId(customerId, activeOnly = true) {
     query = query.eq('policy_status', 1);
   }
 
+  // 只顯示壽險保單，排除產險（P）
+  query = query.neq('policy_type', 'P');
+
   const { data, error } = await query;
   if (error) {
     console.error('[supabasePolicies] getPoliciesByCustomerId error:', error.message);
