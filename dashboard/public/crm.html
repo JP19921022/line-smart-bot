@@ -490,17 +490,209 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
   transition:all .15s;
 }
 .tag-panel-toggle:hover{border-color:rgba(139,92,246,0.4);color:var(--violet);}
+
+/* ── CRM Sidebar Menu ── */
+.crm-sidebar-overlay{
+  position:fixed;inset:0;background:rgba(8,13,26,0.75);
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  z-index:500;opacity:0;pointer-events:none;transition:opacity .25s;
+}
+.crm-sidebar-overlay.open{opacity:1;pointer-events:auto;}
+
+.crm-sidebar{
+  position:fixed;top:0;left:0;bottom:0;width:280px;
+  background:var(--card);border-right:1px solid var(--border2);
+  z-index:501;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+  box-shadow:4px 0 32px rgba(0,0,0,0.5);
+}
+.crm-sidebar.open{transform:translateX(0);}
+
+.crm-sidebar-head{
+  display:flex;align-items:center;gap:12px;
+  padding:20px 20px 16px;
+  border-bottom:1px solid var(--border);
+}
+.crm-sidebar-title{
+  font-weight:800;font-size:15px;
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  flex:1;
+}
+.crm-sidebar-close{
+  background:none;border:none;color:var(--sub2);
+  font-size:20px;cursor:pointer;padding:4px;line-height:1;
+  transition:color .15s;
+}
+.crm-sidebar-close:hover{color:var(--text);}
+
+.crm-sidebar-nav{flex:1;overflow-y:auto;padding:12px 10px;}
+.crm-nav-section{
+  font-size:10px;font-weight:700;color:var(--sub);
+  letter-spacing:.12em;text-transform:uppercase;
+  padding:12px 10px 6px;
+}
+.crm-nav-item{
+  display:flex;align-items:center;gap:12px;
+  padding:12px 14px;border-radius:12px;
+  cursor:pointer;transition:all .15s;
+  color:var(--text2);font-size:13px;font-weight:500;
+  margin-bottom:2px;
+}
+.crm-nav-item:hover{background:rgba(139,92,246,0.12);color:var(--text);}
+.crm-nav-item.active{
+  background:linear-gradient(135deg,rgba(124,58,237,0.2),rgba(6,182,212,0.1));
+  color:white;font-weight:700;
+  border:1px solid rgba(124,58,237,0.3);
+}
+.crm-nav-icon{font-size:18px;width:24px;text-align:center;flex-shrink:0;}
+.crm-nav-badge{
+  background:var(--red);color:white;border-radius:999px;
+  padding:1px 7px;font-size:10px;font-weight:700;
+  margin-left:auto;
+}
+
+.crm-sidebar-footer{
+  padding:16px 20px;
+  border-top:1px solid var(--border);
+  font-size:11px;color:var(--sub2);
+  display:flex;align-items:center;gap:8px;
+}
+
+/* ── Menu Toggle Button ── */
+.crm-menu-btn{
+  background:var(--card2);
+  border:1px solid var(--border2);
+  color:var(--text2);border-radius:10px;
+  padding:8px 12px;cursor:pointer;
+  font-size:16px;line-height:1;
+  transition:all .15s;
+  display:flex;align-items:center;justify-content:center;
+  min-width:40px;min-height:36px;
+}
+.crm-menu-btn:hover{background:var(--card3);color:var(--text);border-color:rgba(139,92,246,0.4);}
+
+/* ── Customer Drawer (right side) ── */
+.customer-drawer{
+  position:fixed;top:0;right:0;bottom:0;
+  width:min(420px,100vw);
+  background:var(--card);
+  border-left:1px solid var(--border2);
+  z-index:502;
+  transform:translateX(100%);
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+  box-shadow:-4px 0 32px rgba(0,0,0,0.5);
+}
+.customer-drawer.open{transform:translateX(0);}
+
+.customer-drawer-head{
+  display:flex;align-items:center;gap:10px;
+  padding:16px 20px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.customer-drawer-title{
+  font-weight:700;font-size:14px;color:var(--text);flex:1;
+}
+.customer-drawer-body{
+  flex:1;overflow-y:auto;padding:16px 20px 32px;
+}
+
+/* ── Page Sections ── */
+.page-section{display:none;margin-top:16px;}
+.page-section.active{display:block;}
+.page-section-head{
+  display:flex;align-items:center;gap:12px;
+  padding:16px 0 12px;
+  margin-bottom:4px;
+}
+.page-section-title{
+  font-size:16px;font-weight:800;
+  background:var(--g-main);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.page-back-btn{
+  background:var(--card2);border:1px solid var(--border2);
+  color:var(--sub2);border-radius:8px;padding:5px 12px;
+  font-size:12px;cursor:pointer;transition:all .15s;
+}
+.page-back-btn:hover{color:var(--text);background:var(--card3);}
+
+/* ── Main grid full width ── */
+.main-content{margin-top:16px;}
+
 </style>
 </head>
 <body>
 
+<!-- Sidebar Overlay -->
+<div id="crmSidebarOverlay" class="crm-sidebar-overlay" onclick="closeMenu()"></div>
+
+<!-- Sidebar Menu -->
+<div id="crmSidebar" class="crm-sidebar">
+  <div class="crm-sidebar-head">
+    <div class="brand-mark" style="width:32px;height:32px;font-size:13px">JF</div>
+    <span class="crm-sidebar-title">功能選單</span>
+    <button class="crm-sidebar-close" onclick="closeMenu()">✕</button>
+  </div>
+  <div class="crm-sidebar-nav">
+    <div class="crm-nav-section">主要功能</div>
+    <div class="crm-nav-item active" id="navHome" onclick="showPage('home')">
+      <span class="crm-nav-icon">🏠</span> 主頁 / 客戶清單
+    </div>
+    <div class="crm-nav-item" id="navNew" onclick="showPage('new')">
+      <span class="crm-nav-icon">➕</span> 新增客戶
+    </div>
+    <div class="crm-nav-section">業務工具</div>
+    <div class="crm-nav-item" id="navToday" onclick="showPage('today')">
+      <span class="crm-nav-icon">📅</span> 今日待辦
+      <span class="crm-nav-badge" id="menuTodayBadge" style="display:none">0</span>
+    </div>
+    <div class="crm-nav-item" id="navKanban" onclick="showPage('kanban')">
+      <span class="crm-nav-icon">📊</span> Pipeline Kanban
+    </div>
+    <div class="crm-nav-item" id="navBroadcast" onclick="showPage('broadcast')">
+      <span class="crm-nav-icon">📣</span> 群發名單建立器
+    </div>
+    <div class="crm-nav-item" id="navJourney" onclick="showPage('journey')">
+      <span class="crm-nav-icon">🔄</span> 自動旅程
+    </div>
+    <div class="crm-nav-section">系統</div>
+    <div class="crm-nav-item" id="navSettings" onclick="showPage('settings')">
+      <span class="crm-nav-icon">⚙️</span> 系統設定
+    </div>
+  </div>
+  <div class="crm-sidebar-footer">
+    <span id="syncMsgSidebar"></span>
+  </div>
+</div>
+
+<!-- Customer Drawer (右側) -->
+<div id="customerDrawer" class="customer-drawer">
+  <div class="customer-drawer-head">
+    <button onclick="closeCustomerDrawer()" class="page-back-btn">← 返回</button>
+    <span class="customer-drawer-title" id="drawerTitle">客戶資料</span>
+    <button class="btn btn-sm" onclick="saveLead()" style="background:var(--g-main)">儲存</button>
+  </div>
+  <div class="customer-drawer-body" id="customerDrawerBody">
+    <!-- form content will be moved here by JS -->
+  </div>
+</div>
+<div id="customerDrawerOverlay" class="crm-sidebar-overlay" onclick="closeCustomerDrawer()"></div>
+
 <!-- Header -->
 <header class="app-header">
-  <div class="header-brand">
-    <div class="brand-mark">JF</div>
-    <div>
-      <div class="brand-name">雋鋒保經 CRM</div>
-      <div class="brand-sub">客戶關係管理系統</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <button class="crm-menu-btn" onclick="openMenu()" title="選單">☰</button>
+    <div class="header-brand">
+      <div class="brand-mark">JF</div>
+      <div>
+        <div class="brand-name">雋鋒保經 CRM</div>
+        <div class="brand-sub">客戶關係管理系統</div>
+      </div>
     </div>
   </div>
   <div class="row" style="gap:10px;align-items:center">
@@ -511,6 +703,13 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
 </header>
 
 <div class="wrap">
+
+  <!-- ── 隱藏的相容欄位（供 JS 讀寫，實際 UI 在 settings page）── -->
+  <div style="display:none" aria-hidden="true">
+    <input id="adminToken" type="password" autocomplete="off"/>
+    <input type="file" id="importFile" accept=".json,.csv,.xlsx,.xls" onchange="importData()"/>
+    <div id="monthBirthdayBox"></div>
+  </div>
 
   <!-- ── 統計儀表板 ── -->
   <div class="stats-grid">
@@ -540,14 +739,9 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
     </div>
   </div>
 
-  <div class="main-grid">
-
-    <!-- Left: Customer Form -->
-    <div style="display:flex;flex-direction:column;gap:16px">
-
-      <!-- Form Panel -->
-      <div class="panel">
-        <div class="panel-title">客戶資料</div>
+  <!-- Customer Form (移到 Drawer，此處保留隱藏的欄位供 JS 讀寫) -->
+  <div id="customerFormPanel" style="display:none">
+    <div id="customerFormPlaceholder">
         <input id="id" type="hidden"/>
 
         <div class="field-group">
@@ -668,30 +862,11 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
         </div>
       </div>
 
-      <!-- Sync Panel -->
-      <div class="panel">
-        <div class="panel-title">系統設定</div>
-        <div class="field-group">
-          <label class="field-label">Dashboard Admin Token</label>
-          <input id="adminToken" type="password" placeholder="貼上 admin token"/>
-        </div>
-        <button class="btn" onclick="saveAdminToken()" style="width:100%;margin-bottom:12px">儲存 Token</button>
+    </div>
+  </div>
+  <!-- Settings moved to page-settings below -->
 
-        <div class="section-head">資料操作</div>
-        <div class="row">
-          <button class="btn" onclick="syncLineContacts()" style="flex:1">同步 LINE 名單</button>
-          <button class="btn btn-ghost" onclick="exportData()">匯出 JSON</button>
-        </div>
-        <div class="field-group" style="margin-top:10px">
-          <label class="field-label">匯入檔案（JSON / CSV / XLSX）</label>
-          <input type="file" id="importFile" accept=".json,.csv,.xlsx,.xls" onchange="importData()" style="background:var(--card3)!important;padding:8px"/>
-        </div>
-
-        <!-- Birthday Box -->
-        <div id="monthBirthdayBox"></div>
-      </div>
-
-      <!-- ── 互動記錄 ── -->
+      <!-- actLog moved to customer drawer -->
       <div class="panel act-panel" id="actLogPanel" style="display:none">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
           <div class="act-panel-title">💬 對話紀錄</div>
@@ -700,15 +875,30 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
             <button type="button" onclick="syncActivitiesFromServer(true)" style="background:none;border:1px solid var(--sub2);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--sub2);cursor:pointer">↻ 同步</button>
           </div>
         </div>
+        <!-- 新增記錄表單 -->
+        <div style="margin-bottom:12px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            <button type="button" class="act-type-btn sel" data-type="📞 電話" onclick="selectActType(this)">📞 電話</button>
+            <button type="button" class="act-type-btn" data-type="💬 LINE" onclick="selectActType(this)">💬 LINE</button>
+            <button type="button" class="act-type-btn" data-type="🤝 會面" onclick="selectActType(this)">🤝 會面</button>
+            <button type="button" class="act-type-btn" data-type="📋 提案" onclick="selectActType(this)">📋 提案</button>
+            <button type="button" class="act-type-btn" data-type="✅ 成交" onclick="selectActType(this)">✅ 成交</button>
+            <button type="button" class="act-type-btn" data-type="📝 備忘" onclick="selectActType(this)">📝 備忘</button>
+          </div>
+          <textarea id="actNote" placeholder="輸入互動記錄內容…" style="width:100%;min-height:68px;resize:vertical;background:var(--card2)!important;color:var(--text)!important;border:1px solid var(--border2)!important;border-radius:10px;padding:9px 12px;font-family:inherit;font-size:13px;outline:none;" onkeydown="if(event.key==='Enter'&&event.ctrlKey){event.preventDefault();addActivity();}"></textarea>
+          <button class="btn" onclick="addActivity()" style="width:100%;margin-top:6px">＋ 新增記錄 <span style="opacity:.6;font-size:10px">Ctrl+Enter</span></button>
+        </div>
         <!-- 時間軸 -->
         <div class="act-timeline" id="actTimeline"><div class="act-empty">尚無對話紀錄<br/><span style="font-size:11px;color:var(--sub2)">與 Bot 對話 3 則後自動匯入</span></div></div>
       </div>
 
-    </div>
-
-    <!-- Right: Customer List -->
-    <details class="panel" open>
-      <summary>客戶清單</summary>
+  <!-- ─── 客戶清單（全寬）─── -->
+  <div class="main-content" id="mainContent">
+  <details class="panel" open>
+    <summary style="display:flex;align-items:center;justify-content:space-between">
+      <span>客戶清單</span>
+      <button type="button" onclick="event.stopPropagation();openNewCustomer()" class="btn btn-sm" style="margin-left:auto;margin-right:4px">＋ 新增客戶</button>
+    </summary>
       <div class="collapsible-content">
 
         <!-- Search & Filters -->
@@ -758,6 +948,12 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
         <!-- Reminder -->
         <div class="small warn" id="reminderBox" style="margin-bottom:10px;padding:8px 12px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:8px"></div>
 
+        <!-- Active Filter Banner -->
+        <div id="filterBanner" style="display:none;margin-bottom:10px;padding:8px 14px;background:rgba(139,92,246,0.15);border:1.5px solid rgba(139,92,246,0.45);border-radius:8px;align-items:center;justify-content:space-between;gap:8px">
+          <span id="filterBannerText" style="font-size:13px;font-weight:600;color:var(--violet)"></span>
+          <button onclick="clearStatFilter()" style="background:none;border:1px solid rgba(139,92,246,0.4);color:var(--violet);border-radius:6px;padding:2px 10px;font-size:12px;cursor:pointer;white-space:nowrap">✕ 取消篩選</button>
+        </div>
+
         <!-- Table -->
         <div style="overflow-x:auto">
           <table class="tbl" id="tbl"></table>
@@ -767,30 +963,40 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
         <!-- Birthday month table -->
         <table class="tbl" id="birthdayMonthTbl" style="margin-top:12px"></table>
       </div>
-    </details>
+  </details>
+  </div><!-- end main-content -->
 
+  <!-- ─── Page Sections ─── -->
+
+  <!-- Today -->
+  <div id="page-today" class="page-section">
+    <div class="page-section-head">
+      <button class="page-back-btn" onclick="showPage('home')">← 返回</button>
+      <span class="page-section-title">📅 今日待辦</span>
+    </div>
+    <div class="panel">
+      <div id="todayList2"><div class="today-empty">✅ 今日無待辦回訪</div></div>
+    </div>
   </div>
 
-  <!-- Today's Follow-up Panel -->
-  <details class="panel" id="todayPanel" style="margin-top:16px" open>
-    <summary>今日待辦 <span id="todayBadge" style="background:var(--red);color:white;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;margin-left:8px;display:inline-block;">0</span></summary>
-    <div class="collapsible-content">
-      <div id="todayList"><div class="today-empty">✅ 今日無待辦回訪</div></div>
+  <!-- Kanban -->
+  <div id="page-kanban" class="page-section">
+    <div class="page-section-head">
+      <button class="page-back-btn" onclick="showPage('home')">← 返回</button>
+      <span class="page-section-title">📊 Pipeline Kanban</span>
     </div>
-  </details>
-
-  <!-- Pipeline Kanban -->
-  <details class="panel" style="margin-top:16px">
-    <summary>Pipeline Kanban</summary>
-    <div class="collapsible-content">
-      <div class="kanban" id="kanban"></div>
+    <div class="panel">
+      <div class="kanban" id="kanban2"></div>
     </div>
-  </details>
+  </div>
 
-  <!-- ── 群發名單建立器 ── -->
-  <details class="panel" style="margin-top:16px">
-    <summary>📣 群發名單建立器</summary>
-    <div class="collapsible-content">
+  <!-- Broadcast -->
+  <div id="page-broadcast" class="page-section">
+    <div class="page-section-head">
+      <button class="page-back-btn" onclick="showPage('home')">← 返回</button>
+      <span class="page-section-title">📣 群發名單建立器</span>
+    </div>
+    <div class="panel">
       <div class="bc-grid">
         <div class="bc-section">
           <div class="bc-section-label">客戶分級</div>
@@ -850,19 +1056,57 @@ tr.editing-row{outline:2px solid rgba(139,92,246,0.45);outline-offset:-1px;}
         <table class="tbl" id="bcTable"></table>
       </div>
     </div>
-  </details>
-
-  <!-- Journey Automation -->
-  <div class="panel journey-panel" style="margin-top:16px">
-    <div class="panel-title">自動旅程（MVP）</div>
-    <div class="journey-checks">
-      <label><input type="checkbox" id="jBirthday" checked/> 生日前 7 天提醒</label>
-      <label><input type="checkbox" id="jExpiry" checked/> 到期前 30 天提醒</label>
-      <label><input type="checkbox" id="jSilent" checked/> 沉默 30 天喚醒</label>
-    </div>
-    <button class="btn" onclick="runJourneyNow()">立即掃描旅程</button>
-    <div id="journeyResult" class="small" style="margin-top:10px;padding:10px 14px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;display:none"></div>
   </div>
+
+  <!-- Journey -->
+  <div id="page-journey" class="page-section">
+    <div class="page-section-head">
+      <button class="page-back-btn" onclick="showPage('home')">← 返回</button>
+      <span class="page-section-title">🔄 自動旅程</span>
+    </div>
+    <div class="panel journey-panel">
+      <div class="panel-title">自動旅程（MVP）</div>
+      <div class="journey-checks">
+        <label><input type="checkbox" id="jBirthday" checked/> 生日前 7 天提醒</label>
+        <label><input type="checkbox" id="jExpiry" checked/> 到期前 30 天提醒</label>
+        <label><input type="checkbox" id="jSilent" checked/> 沉默 30 天喚醒</label>
+      </div>
+      <button class="btn" onclick="runJourneyNow()">立即掃描旅程</button>
+      <div id="journeyResult" class="small" style="margin-top:10px;padding:10px 14px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:8px;display:none"></div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="page-settings" class="page-section">
+    <div class="page-section-head">
+      <button class="page-back-btn" onclick="showPage('home')">← 返回</button>
+      <span class="page-section-title">⚙️ 系統設定</span>
+    </div>
+    <div class="panel">
+      <div class="field-group">
+        <label class="field-label">Dashboard Admin Token</label>
+        <input id="adminToken2" type="password" placeholder="貼上 admin token"/>
+      </div>
+      <button class="btn" onclick="saveAdminToken2()" style="width:100%;margin-bottom:12px">儲存 Token</button>
+      <div class="section-head">資料操作</div>
+      <div class="row">
+        <button class="btn" onclick="syncLineContacts()" style="flex:1">同步 LINE 名單</button>
+        <button class="btn btn-ghost" onclick="exportData()">匯出 JSON</button>
+      </div>
+      <div class="field-group" style="margin-top:10px">
+        <label class="field-label">匯入檔案（JSON / CSV / XLSX）</label>
+        <input type="file" id="importFile2" accept=".json,.csv,.xlsx,.xls" onchange="importData2()" style="background:var(--card3)!important;padding:8px"/>
+      </div>
+      <div id="monthBirthdayBox2" style="margin-top:12px"></div>
+    </div>
+  </div>
+
+  <!-- Hidden legacy panels (IDs preserved for JS compatibility) -->
+  <div id="todayPanel" style="display:none">
+    <div id="todayList" style="display:none"></div>
+    <span id="todayBadge" style="display:none">0</span>
+  </div>
+  <div style="display:none"><div class="kanban" id="kanban"></div></div>
 
 </div>
 
@@ -901,11 +1145,13 @@ async function persistToServer(){
 }
 
 async function load(){
-  $('adminToken').value=getToken();
+  const t=getToken();
+  if($('adminToken')) $('adminToken').value=t;
+  if($('adminToken2')) $('adminToken2').value=t;
 
   // 先從 localStorage 載入（快，立即顯示）
   const local=JSON.parse(localStorage.getItem(KEY)||'[]');
-  leads=Array.isArray(local)?local:[];
+  leads=(Array.isArray(local)?local:[]).map(x=>({...x,tags:Array.isArray(x.tags)?x.tags.join(','):(x.tags||'')}));
   render();
 
   // 再從伺服器載入（同步所有設備的最新資料）
@@ -919,7 +1165,7 @@ async function load(){
       if(!merged[x.id]||new Date(x.updatedAt||0)>=new Date(merged[x.id].updatedAt||0))
         merged[x.id]=x;
     }
-    leads=Object.values(merged);
+    leads=Object.values(merged).map(x=>({...x,tags:Array.isArray(x.tags)?x.tags.join(','):(x.tags||'')}));
     // 同步回 localStorage
     localStorage.setItem(KEY,JSON.stringify(leads));
     render();
@@ -931,7 +1177,8 @@ async function load(){
 }
 
 function saveAdminToken(){
-  localStorage.setItem(TOKEN_KEY,$('adminToken').value.trim());
+  const val=($('adminToken')||{}).value||($('adminToken2')||{}).value||'';
+  localStorage.setItem(TOKEN_KEY,val.trim());
   $('syncMsg').innerText='Token 已儲存';
   // 儲存 token 後立即從伺服器拉資料
   load();
@@ -941,13 +1188,25 @@ function persist(){
   localStorage.setItem(KEY,JSON.stringify(leads));
   persistToServer(); // 同步到伺服器（非同步，不擋 UI）
 }
-function resetForm(){$('id').value='';['name','phone','lineId','policy','note','birthday','expiryAt','nextFollowAt','tags','dealValue'].forEach(k=>{if($(k))$(k).value='';});$('stage').value='名單';$('lineBound').value='yes';$('priority').value='普通';if($('source'))$('source').value='';clearGrade();loadTagsFromStr('');const ap=document.getElementById('actLogPanel');if(ap)ap.style.display='none';}
+function resetForm(){$('id').value='';['name','phone','lineId','policy','note','birthday','expiryAt','nextFollowAt','tags','dealValue'].forEach(k=>{if($(k))$(k).value='';});$('stage').value='名單';$('lineBound').value='yes';$('priority').value='普通';if($('source'))$('source').value='';clearGrade();loadTagsFromStr('');const ap=document.getElementById('actLogPanel');if(ap)ap.style.display='none';/* drawer managed by closeCustomerDrawer */}
+function openNewCustomer(){
+  const curId=$('id')&&$('id').value;
+  if(curId) autoSaveSilent();
+  resetForm();
+  openCustomerDrawer('新增客戶');
+  setTimeout(()=>{const n=$('name');if(n)n.focus();},200);
+}
+function closeCustomerPanel(){
+  const curId=$('id').value;
+  if(curId) autoSaveSilent();
+  resetForm();
+}
 function saveLead(){
   syncTagsField();
   const data={id:$('id').value||('c_'+Date.now()),name:$('name').value.trim(),phone:$('phone').value.trim(),lineId:$('lineId').value.trim(),lineBound:$('lineBound').value,stage:$('stage').value,priority:$('priority').value||'普通',grade:$('grade').value||'',birthday:$('birthday').value||'',expiryAt:$('expiryAt').value||'',nextFollowAt:$('nextFollowAt').value||'',policy:$('policy').value.trim(),note:$('note').value.trim(),tags:$('tags').value.trim(),source:$('source')?$('source').value:'',dealValue:$('dealValue')?$('dealValue').value:'',updatedAt:new Date().toISOString()};
   if(!data.name) return crmToast('請填姓名','err');
   const i=leads.findIndex(x=>x.id===data.id); if(i>=0) leads[i]=data; else leads.unshift(data);
-  persist(); render(); resetForm(); crmToast('✅ 已儲存','ok');
+  persist(); render(); closeCustomerDrawer(); crmToast('✅ 已儲存','ok');
 }
 function editLead(id){
   const x=leads.find(v=>v.id===id); if(!x) return;
@@ -958,8 +1217,8 @@ function editLead(id){
   if(x.grade) setGrade(x.grade); else clearGrade();
   loadTagsFromStr(x.tags||'');
   openActPanel(x.id, x.name);
+  openCustomerDrawer(x.name||'客戶資料');
   render(); // re-render to highlight active row
-  window.scrollTo({top:0,behavior:'smooth'});
 }
 function autoSaveSilent(){
   // 靜默儲存目前表單（不跳提示，只有輕量 toast）
@@ -1011,8 +1270,50 @@ async function markContacted(id){
 function setBirthdaySort(mode){birthdaySort=mode;currentPage=1;render();}
 function setLineBoundFilter(){showBoundOnly=!showBoundOnly;currentPage=1;const btn=document.getElementById('btnBoundFilter');if(btn){btn.classList.toggle('btn-active',showBoundOnly);}render();}
 function setHighPriFilter(){showHighPriOnly=!showHighPriOnly;currentPage=1;const btn=document.getElementById('btnHighPri');if(btn){btn.classList.toggle('btn-active',showHighPriOnly);}render();}
-function toggleStatFilter(key){statFilter=statFilter===key?'':key;currentPage=1;['bound','birthday','expiry','overdue'].forEach(k=>{const c=document.getElementById('statCard'+k.charAt(0).toUpperCase()+k.slice(1));if(c)c.classList.toggle('active',statFilter===k);});render();}
-function clearStatFilter(){statFilter='';currentPage=1;['bound','birthday','expiry','overdue'].forEach(k=>{const c=document.getElementById('statCard'+k.charAt(0).toUpperCase()+k.slice(1));if(c)c.classList.remove('active');});render();}
+const _filterLabels={bound:'🔗 LINE已綁定',birthday:'🎂 本月壽星',expiry:'📋 本月到期',overdue:'⚠️ 逾期回訪'};
+function _updateFilterBanner(){
+  const banner=document.getElementById('filterBanner');
+  const txt=document.getElementById('filterBannerText');
+  if(!banner) return;
+  if(statFilter){
+    banner.style.display='flex';
+    if(txt) txt.innerText='篩選中：'+(_filterLabels[statFilter]||statFilter);
+  } else {
+    banner.style.display='none';
+  }
+}
+function toggleStatFilter(key){
+  statFilter=statFilter===key?'':key;
+  currentPage=1;
+  ['bound','birthday','expiry','overdue'].forEach(k=>{
+    const c=document.getElementById('statCard'+k.charAt(0).toUpperCase()+k.slice(1));
+    if(c)c.classList.toggle('active',statFilter===k);
+  });
+  // 確保切回主頁（客戶清單）才能看到篩選結果
+  const mainContent=document.getElementById('mainContent');
+  if(mainContent) mainContent.style.display='';
+  document.querySelectorAll('.page-section').forEach(el=>el.classList.remove('active'));
+  _setNavActive('home');
+  _currentPage='home';
+  _updateFilterBanner();
+  render();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function clearStatFilter(){
+  statFilter='';
+  currentPage=1;
+  ['bound','birthday','expiry','overdue'].forEach(k=>{
+    const c=document.getElementById('statCard'+k.charAt(0).toUpperCase()+k.slice(1));
+    if(c)c.classList.remove('active');
+  });
+  const mainContent=document.getElementById('mainContent');
+  if(mainContent) mainContent.style.display='';
+  document.querySelectorAll('.page-section').forEach(el=>el.classList.remove('active'));
+  _setNavActive('home');
+  _currentPage='home';
+  _updateFilterBanner();
+  render();
+}
 function exportExcel(){
   const keys=['name','phone','lineId','lineBound','grade','stage','priority','source','dealValue','birthday','expiryAt','nextFollowAt','policy','note','tags','updatedAt'];
   const headers=['姓名','手機','LINE ID','LINE綁定','客戶分級','階段','優先等級','客戶來源','預計年保費','生日','保單到期日','下次回訪','保單重點','備註','標籤','更新時間'];
@@ -1024,7 +1325,7 @@ function exportExcel(){
   crmToast('✅ Excel 已匯出','ok');
 }
 function setPageSize(v){pageSize=Number(v||30);currentPage=1;render();}
-function setPage(p){currentPage=p;render();}
+function setPage(p){currentPage=p;render();window.scrollTo({top:document.getElementById('mainContent')?document.getElementById('mainContent').offsetTop-20:0,behavior:'smooth'});}
 function toggleSelect(id,checked){ if(checked) selectedIds.add(id); else selectedIds.delete(id); }
 async function openCustomerFolder(id,name){
   const token = localStorage.getItem(TOKEN_KEY) || localStorage.getItem('dashboard_admin_token') || '';
@@ -1064,7 +1365,7 @@ function showBirthdayMonth(){
 }
 function priClass(p){if(p==='高') return 'pri-high'; if(p==='中') return 'pri-mid'; if(p==='低') return 'pri-low'; return 'pri-normal';}
 function priLabel(p){if(p==='高') return '🔥高'; if(p==='中') return '◆中'; if(p==='低') return '▽低'; return '—';}
-function renderTags(t){if(!t) return ''; return t.split(',').map(s=>s.trim()).filter(Boolean).map(s=>`<span class="tag-chip">${s}</span>`).join('');}
+function renderTags(t){if(!t) return ''; if(Array.isArray(t)) t=t.join(','); return String(t).split(',').map(s=>s.trim()).filter(Boolean).map(s=>`<span class="tag-chip">${s}</span>`).join('');}
 function render(){
   const q=($('q').value||'').toLowerCase();
   const now = new Date();
@@ -1072,7 +1373,7 @@ function render(){
   const thisMonth = now.getMonth()+1;
 
   // ── Stats (always from full list) ──
-  const boundCount = leads.filter(x=>x.lineBound==='yes'&&x.lineId).length;
+  const boundCount = leads.filter(x=>x.lineId).length;
   const birthdayCount = leads.filter(x=>x.birthday&&Number(x.birthday.slice(5,7))===thisMonth).length;
   const expiryCount = leads.filter(x=>x.expiryAt&&x.expiryAt.slice(0,7)===now.toISOString().slice(0,7)).length;
   const overdueCount = leads.filter(x=>x.nextFollowAt&&x.nextFollowAt<=today).length;
@@ -1123,14 +1424,14 @@ function render(){
 
   // ── Filtering ──
   let rows=leads.filter(x=>[x.name,x.phone,x.lineId,x.tags||''].join(' ').toLowerCase().includes(q));
-  if(showBoundOnly) rows=rows.filter(x=>x.lineBound==='yes'&&x.lineId);
+  if(showBoundOnly) rows=rows.filter(x=>x.lineId);
   if(showHighPriOnly) rows=rows.filter(x=>x.priority==='高');
   const stageF=($('filterStage')||{}).value||'';
   if(stageF) rows=rows.filter(x=>x.stage===stageF);
   const gradeF=($('filterGrade')||{}).value||'';
   if(gradeF) rows=rows.filter(x=>x.grade===gradeF);
   // stat card filter
-  if(statFilter==='bound') rows=rows.filter(x=>x.lineBound==='yes'&&x.lineId);
+  if(statFilter==='bound') rows=rows.filter(x=>x.lineId);
   if(statFilter==='birthday') rows=rows.filter(x=>x.birthday&&Number(x.birthday.slice(5,7))===thisMonth);
   if(statFilter==='expiry') rows=rows.filter(x=>x.expiryAt&&x.expiryAt.slice(0,7)===now.toISOString().slice(0,7));
   if(statFilter==='overdue') rows=rows.filter(x=>x.nextFollowAt&&x.nextFollowAt<=today);
@@ -1149,7 +1450,9 @@ function render(){
       const safeName=(x.name||'').replace(/'/g,"\\'");
       return `<tr class="${isEditing?'editing-row':''}"><td><input type='checkbox' ${selectedIds.has(x.id)?'checked':''} onchange="toggleSelect('${x.id}',this.checked)" style="width:auto"/></td><td class="name-cell" ondblclick="quickEdit('${x.id}')" style="font-weight:600">${isEditing?'✏️ ':''}<span>${x.name}</span></td><td>${x.phone||''}</td><td>${gradeHtml(x.grade)}</td><td>${renderTags(x.tags)}</td><td>${x.lineBound==='yes'?`<button onclick="toggleBound('${x.id}')" title="點擊切換綁定" style="background:none;border:none;cursor:pointer;font-size:17px;padding:2px 6px;border-radius:5px" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='none'">✅</button>`:`<button onclick="toggleBound('${x.id}')" title="點擊切換綁定" style="background:none;border:none;cursor:pointer;font-size:15px;padding:2px 6px;border-radius:5px;color:var(--sub)" onmouseover="this.style.background='rgba(139,92,246,0.12)'" onmouseout="this.style.background='none'">☐</button>`}</td><td class="${priClass(x.priority)}" style="font-size:12px;font-weight:700">${priLabel(x.priority)}</td><td>${x.birthday||''}</td><td>${x.expiryAt||''}</td><td><span class="tag">${x.stage}</span></td><td>${x.nextFollowAt||''}</td><td style="font-size:11px;color:var(--sub)">${x.updatedAt?new Date(x.updatedAt).toLocaleString('zh-TW',{hour12:false}):''}</td><td><button class="btn btn-sm btn-ghost" onclick="openCustomerFolder('${x.id}','${safeName}')">資料夾</button> <button class="btn btn-sm btn-danger" onclick="delLead('${x.id}')">刪除</button></td></tr>`;
     }).join('');
-  $('pager').innerHTML=`<span class='small' style='margin-right:6px'>共 ${rows.length} 筆 第 ${currentPage}/${totalPages} 頁</span>` + Array.from({length:totalPages},(_,i)=>`<button class='btn' onclick='setPage(${i+1})' style='${i+1===currentPage?'outline:2px solid rgba(139,92,246,0.6);':''}'>${i+1}</button>`).join('');
+  _updateMenuBadge();
+  const filterLabel=statFilter?` | 🔍 ${_filterLabels[statFilter]||statFilter}`:'';
+  $('pager').innerHTML=`<span class='small' style='margin-right:6px'>共 ${rows.length} 筆${filterLabel} ／ 第 ${currentPage}/${totalPages} 頁</span>` + Array.from({length:totalPages},(_,i)=>`<button class='btn${i+1===currentPage?' btn-active':''}' onclick='setPage(${i+1})' style='${i+1===currentPage?'background:rgba(139,92,246,0.2);border-color:rgba(139,92,246,0.6);color:#a78bfa;font-weight:700;':''}'>${i+1}</button>`).join('');
 
   const unbound = leads.filter(x=>(x.lineBound||'yes')==='no'||!x.lineId);
   $('reminderBox').innerText = `${overdueCount?`⚠️ 今天/逾期回訪 ${overdueCount} 位。`:'✅ 暫無逾期回訪。'}　未綁定LINE：${unbound.length} 位　本月壽星：${birthdayCount} 位`;
@@ -1556,7 +1859,10 @@ function clearAllTags(){
 }
 function loadTagsFromStr(str){
   _selectedTags.clear();
-  if(str) str.split(',').map(s=>s.trim()).filter(Boolean).forEach(t=>_selectedTags.add(t));
+  if(str){
+    const s=Array.isArray(str)?str.join(','):String(str);
+    s.split(',').map(x=>x.trim()).filter(Boolean).forEach(t=>_selectedTags.add(t));
+  }
   syncTagsField();
   renderSelectedTagsDisplay();
   if(_tagPanelOpen) renderTagCbs();
@@ -1615,7 +1921,8 @@ function doCrmLogin(){
   if(!v){document.getElementById('crmLoginMsg').innerText='請輸入 Token';return;}
   localStorage.setItem(TOKEN_KEY, v);
   localStorage.setItem('dashboard_admin_token', v);
-  document.getElementById('adminToken').value=v;
+  if(document.getElementById('adminToken')) document.getElementById('adminToken').value=v;
+  if(document.getElementById('adminToken2')) document.getElementById('adminToken2').value=v;
   hideCrmLogin();
   document.getElementById('crmMobileLoginBtn').style.display='none';
   document.getElementById('syncMsg').innerText='✅ 已登入，同步中…';
@@ -1630,6 +1937,143 @@ function checkCrmMobileLogin(){
   }
 }
 window.addEventListener('load',()=>{ setTimeout(checkCrmMobileLogin, 600); });
+
+// ── Sidebar Menu ────────────────────────────────────────
+function openMenu(){
+  document.getElementById('crmSidebar').classList.add('open');
+  document.getElementById('crmSidebarOverlay').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeMenu(){
+  document.getElementById('crmSidebar').classList.remove('open');
+  document.getElementById('crmSidebarOverlay').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+// ── Page Navigation ──────────────────────────────────────
+let _currentPage='home';
+const _pageIds=['today','kanban','broadcast','journey','settings'];
+const _navIds={home:'navHome',today:'navToday',kanban:'navKanban',broadcast:'navBroadcast',journey:'navJourney',settings:'navSettings'};
+
+function showPage(page){
+  closeMenu();
+  _currentPage=page;
+
+  if(page==='new'){
+    openNewCustomer();
+    _setNavActive('home');
+    return;
+  }
+
+  const mainContent=document.getElementById('mainContent');
+  if(mainContent) mainContent.style.display=(page==='home')?'':'none';
+
+  _pageIds.forEach(id=>{
+    const el=document.getElementById('page-'+id);
+    if(el) el.classList.toggle('active', id===page);
+  });
+
+  _setNavActive(page);
+
+  if(page==='today') _renderTodayPage();
+  if(page==='kanban') _renderKanbanPage();
+  if(page==='broadcast') setTimeout(buildBroadcastList, 50);
+  if(page==='settings') _loadSettingsPage();
+
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function _setNavActive(page){
+  Object.values(_navIds).forEach(id=>{const el=document.getElementById(id);if(el)el.classList.remove('active');});
+  const navId=_navIds[page];
+  if(navId){const el=document.getElementById(navId);if(el)el.classList.add('active');}
+}
+
+function _renderTodayPage(){
+  const src=document.getElementById('todayList');
+  const dest=document.getElementById('todayList2');
+  if(src&&dest) dest.innerHTML=src.innerHTML;
+}
+function _renderKanbanPage(){
+  const kanban2=document.getElementById('kanban2');
+  if(!kanban2) return;
+  kanban2.innerHTML=stages.map(s=>{
+    const list=leads.filter(x=>x.stage===s);
+    return `<div class='col'><b>${s}</b> <span class='small' style='color:var(--sub)'>(${list.length})</span>${list.map(x=>`<div class='kcard'><div style='font-weight:600;font-size:13px'>${x.name}</div><div class='small' style='margin-top:3px'>${x.phone||x.lineId||'—'}</div><div class='small' style='color:var(--amber)'>回訪：${x.nextFollowAt||'—'}</div></div>`).join('')}</div>`;
+  }).join('');
+}
+function _loadSettingsPage(){
+  const t=getToken();
+  const f=document.getElementById('adminToken2');
+  if(f) f.value=t;
+  const src=document.getElementById('monthBirthdayBox');
+  const dest=document.getElementById('monthBirthdayBox2');
+  if(src&&dest) dest.innerHTML=src.innerHTML;
+}
+function saveAdminToken2(){
+  const val=(document.getElementById('adminToken2')||{}).value||'';
+  localStorage.setItem(TOKEN_KEY,val.trim());
+  const oldField=document.getElementById('adminToken');
+  if(oldField) oldField.value=val;
+  crmToast('Token 已儲存','ok');
+  load();
+}
+function importData2(){
+  const f2=document.getElementById('importFile2');
+  const f1=document.getElementById('importFile');
+  if(f2&&f1){
+    // Create a DataTransfer to copy files
+    try{
+      const dt=new DataTransfer();
+      [...f2.files].forEach(file=>dt.items.add(file));
+      f1.files=dt.files; importData();
+    }catch(e){crmToast('請使用左側的匯入功能','err');}
+  }
+}
+
+// ── Customer Drawer ───────────────────────────────────────
+function openCustomerDrawer(title){
+  const drawer=document.getElementById('customerDrawer');
+  const overlay=document.getElementById('customerDrawerOverlay');
+  const titleEl=document.getElementById('drawerTitle');
+  if(titleEl) titleEl.innerText=title||'客戶資料';
+
+  const body=document.getElementById('customerDrawerBody');
+  const formPanel=document.getElementById('customerFormPanel');
+  const actPanel=document.getElementById('actLogPanel');
+  if(body&&formPanel){
+    formPanel.style.display='block';
+    if(!body.contains(formPanel)) body.appendChild(formPanel);
+    if(actPanel&&!body.contains(actPanel)) body.appendChild(actPanel);
+  }
+
+  if(drawer) drawer.classList.add('open');
+  if(overlay) overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeCustomerDrawer(){
+  const drawer=document.getElementById('customerDrawer');
+  const overlay=document.getElementById('customerDrawerOverlay');
+  if(drawer) drawer.classList.remove('open');
+  if(overlay) overlay.classList.remove('open');
+  document.body.style.overflow='';
+  const curId=$('id')&&$('id').value;
+  if(curId) autoSaveSilent();
+  resetForm();
+}
+
+// ── Update menu badge ─────────────────────────────────────
+function _updateMenuBadge(){
+  const badge=document.getElementById('menuTodayBadge');
+  const todayBadge=document.getElementById('todayBadge');
+  if(!badge||!todayBadge) return;
+  const count=parseInt(todayBadge.innerText)||0;
+  badge.innerText=count;
+  badge.style.display=count>0?'inline':'none';
+  const sm=document.getElementById('syncMsg');
+  const sms=document.getElementById('syncMsgSidebar');
+  if(sm&&sms) sms.innerText=sm.innerText;
+}
 </script>
 
 <!-- iOS Toast -->
