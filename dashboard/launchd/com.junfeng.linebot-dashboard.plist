@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tier-2 #8-C  launchd 開機自動啟動 dashboard
+
+  安裝方式：
+    cd ~/line-bot/dashboard/launchd
+    ./install.sh
+
+  之後 Mac 開機 / 使用者登入後，dashboard 會自動跑在 127.0.0.1:3977。
+  日誌：/tmp/junfeng-linebot-dashboard.{out,err}.log
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.junfeng.linebot-dashboard</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd "$HOME/line-bot/dashboard" &amp;&amp; exec /usr/local/bin/node server.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__HOME__/line-bot/dashboard</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/junfeng-linebot-dashboard.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/junfeng-linebot-dashboard.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>

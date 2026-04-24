@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install deps (ignore scripts to skip native build)
+        run: npm ci --ignore-scripts
+
+      - name: Syntax check — all JS files
+        run: |
+          set -e
+          echo "🔎 checking JS syntax..."
+          find . -path ./node_modules -prune -o -type f -name "*.js" -print | while read -r f; do
+            node --check "$f" || { echo "❌ syntax error in $f"; exit 1; }
+          done
+          echo "✅ all JS files parsed cleanly"
+
+      - name: Check env template
+        run: |
+          # 確保 .env 沒有不小心被 commit 進來
+          if [ -f ".env" ]; then
+            echo "❌ .env should NOT be committed"
+            exit 1
+          fi
+          echo "✅ .env not in repo"
+
+      - name: Check for secrets in source
+        run: |
+          # 簡單 grep：避免把 Supabase service_role key / LINE channel token 寫死進程式碼
+          if grep -RIn --exclude-dir=node_modules --exclude-dir=.git \
+               -e "sb_secret_" \
+               -e "CHANNEL_ACCESS_TOKEN=[A-Za-z0-9/+=]\{50,\}" \
+               . ; then
+            echo "❌ looks like a secret was committed in source code"
+            exit 1
+          fi
+          echo "✅ no obvious hard-coded secrets found"

@@ -7,6 +7,8 @@ const Database = require('better-sqlite3');
 const { ensureFile: ensureAbEventStore, getStatsByVariant, DEFAULT_EVENT_FILE } = require('../ab_event_store');
 const supabase = require('../supabaseClient'); // Supabase 用於拉對話紀錄
 const linePush = require('../linePushHelper'); // 共用 LINE push 工具（審核佇列 / 手動廣播）
+const { startScheduledBroadcastWorker, loadTargetUsers: loadScheduledTargets } = require('./scheduledBroadcastWorker');
+const { startRetentionCleaner } = require('./retentionCleaner');
 
 const app = express();
 app.use(express.json({ limit: '30mb' }));
@@ -211,9 +213,60 @@ function saveAbTest(incoming = {}) {
   return next;
 }
 
+// ──────────────────────────────────────────────
+//  Rate limit for failed admin auth  (Tier-2 #8-A)
+// ──────────────────────────────────────────────
+// 防止 admin token 被暴力破解。只記 *失敗* 的嘗試，正確的請求不受限。
+// 單一 IP 在 5 分鐘內累積 20 次失敗就鎖 10 分鐘。
+//
+// zero-dep：純 Map sliding window。dashboard 重啟會清空（對攻擊者不利也沒關係）。
+const AUTH_FAIL_WINDOW_MS = 5 * 60 * 1000;
+const AUTH_FAIL_THRESHOLD = 20;
+const AUTH_BAN_MS = 10 * 60 * 1000;
+const _authFailMap = new Map();     // ip → { count, firstAt }
+const _authBanMap = new Map();      // ip → bannedUntilMs
+
+function clientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+      || req.socket?.remoteAddress
+      || 'unknown';
+}
+
+function recordAuthFailure(ip) {
+  const now = Date.now();
+  const cur = _authFailMap.get(ip);
+  if (!cur || now - cur.firstAt > AUTH_FAIL_WINDOW_MS) {
+    _authFailMap.set(ip, { count: 1, firstAt: now });
+    return 1;
+  }
+  cur.count++;
+  if (cur.count >= AUTH_FAIL_THRESHOLD) {
+    _authBanMap.set(ip, now + AUTH_BAN_MS);
+    _authFailMap.delete(ip);
+    console.warn(`[auth] IP ${ip} banned for ${AUTH_BAN_MS/1000}s (too many bad tokens)`);
+  }
+  return cur.count;
+}
+
+function isBanned(ip) {
+  const until = _authBanMap.get(ip);
+  if (!until) return false;
+  if (Date.now() > until) { _authBanMap.delete(ip); return false; }
+  return true;
+}
+
 function requireAdmin(req, res, next) {
+  const ip = clientIp(req);
+  if (isBanned(ip)) {
+    return res.status(429).json({ ok: false, error: 'too many failed attempts, try again later' });
+  }
   const token = req.headers['x-admin-token'] || req.query.token;
-  if (token !== ADMIN_TOKEN) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  if (token !== ADMIN_TOKEN) {
+    recordAuthFailure(ip);
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+  // 成功後清掉失敗記錄（避免同一 IP 幾次錯打之後永遠掛著計數）
+  _authFailMap.delete(ip);
   next();
 }
 
@@ -1287,6 +1340,127 @@ app.post('/api/contacts/manual-mode', requireAdmin, (req, res) => {
   res.json({ ok: true, userId, manual: contacts[idx].manual_mode });
 });
 
+// ──────────────────────────────────────────────
+//  客戶分群標籤  (Tier-2 #7-A)
+// ──────────────────────────────────────────────
+// 約定：contact.tags = string[]（選填，預設 []）
+// 標籤字串會自動 trim、去空白、去重、限制 20 字
+
+function normalizeTags(arr) {
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const t of arr) {
+    const s = String(t || '').trim().slice(0, 20);
+    if (!s) continue;
+    const k = s.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(s);
+  }
+  return out;
+}
+
+// 列出目前所有在用的 tag 以及每個 tag 有多少人
+// GET /api/contacts/tags
+app.get('/api/contacts/tags', requireAdmin, (req, res) => {
+  try {
+    const contacts = readJson(CONTACTS_FILE, []);
+    const counter = new Map();  // tagLower → { name, count }
+    for (const c of contacts) {
+      if (!c || !c.userId) continue;
+      const tags = normalizeTags(c.tags);
+      for (const t of tags) {
+        const k = t.toLowerCase();
+        if (!counter.has(k)) counter.set(k, { name: t, count: 0 });
+        counter.get(k).count++;
+      }
+    }
+    const rows = [...counter.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    res.json({ ok: true, total: rows.length, tags: rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 覆寫單一 user 的 tag 清單
+// POST /api/contacts/tags  body: { userId, tags: [...] }
+app.post('/api/contacts/tags', requireAdmin, (req, res) => {
+  try {
+    const userId = String(req.body?.userId || '').trim();
+    const tags = normalizeTags(req.body?.tags);
+    if (!userId) return res.status(400).json({ ok: false, error: 'userId required' });
+
+    const contacts = readJson(CONTACTS_FILE, []);
+    const idx = contacts.findIndex(c => c && c.userId === userId);
+    if (idx < 0) return res.status(404).json({ ok: false, error: 'user not found' });
+
+    contacts[idx].tags = tags;
+    contacts[idx].tags_updated_at = new Date().toISOString();
+    writeJson(CONTACTS_FILE, contacts);
+    res.json({ ok: true, userId, tags });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 批次 add / remove tag（對多位 user）
+// POST /api/contacts/tags/bulk  body: { userIds: [...], add?: [...], remove?: [...] }
+app.post('/api/contacts/tags/bulk', requireAdmin, (req, res) => {
+  try {
+    const userIds = Array.isArray(req.body?.userIds) ? req.body.userIds.filter(Boolean).map(String) : [];
+    const add = normalizeTags(req.body?.add);
+    const remove = normalizeTags(req.body?.remove);
+    if (!userIds.length) return res.status(400).json({ ok: false, error: 'userIds required' });
+    if (!add.length && !remove.length) return res.status(400).json({ ok: false, error: 'add or remove required' });
+
+    const removeLower = new Set(remove.map(x => x.toLowerCase()));
+    const contacts = readJson(CONTACTS_FILE, []);
+    const targetSet = new Set(userIds);
+    let changed = 0;
+    const now = new Date().toISOString();
+
+    for (const c of contacts) {
+      if (!c || !c.userId || !targetSet.has(c.userId)) continue;
+      const current = normalizeTags(c.tags);
+      const afterRemove = current.filter(t => !removeLower.has(t.toLowerCase()));
+      const merged = normalizeTags([...afterRemove, ...add]);
+      c.tags = merged;
+      c.tags_updated_at = now;
+      changed++;
+    }
+    writeJson(CONTACTS_FILE, contacts);
+    res.json({ ok: true, changed, requested: userIds.length });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 依 tag 列出 user（方便預覽、排程推播選對象）
+// GET /api/contacts/by-tag?tags=A,B  (OR 邏輯；空 tags = 全部)
+app.get('/api/contacts/by-tag', requireAdmin, (req, res) => {
+  try {
+    const wanted = normalizeTags(String(req.query.tags || '').split(',')).map(t => t.toLowerCase());
+    const contacts = readJson(CONTACTS_FILE, []);
+    const rows = contacts
+      .filter(c => c && c.userId)
+      .filter(c => {
+        if (wanted.length === 0) return true;
+        const tags = normalizeTags(c.tags).map(t => t.toLowerCase());
+        return wanted.some(w => tags.includes(w));
+      })
+      .map(c => ({
+        userId: c.userId,
+        name: c.name || '',
+        enabled: c.enabled !== false,
+        tags: normalizeTags(c.tags)
+      }));
+    res.json({ ok: true, total: rows.length, rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
 app.get('/api/export/today.csv', requireAdmin, (req, res) => {
   const date = req.query.date || todayTW();
   const rows = parseSendRandom(date);
@@ -1647,6 +1821,7 @@ app.post('/api/manual-broadcast', requireAdmin, async (req, res) => {
     const message = String(req.body?.message || '').trim();
     const segment = String(req.body?.segment || 'enabled').trim();
     const explicitIds = Array.isArray(req.body?.userIds) ? req.body.userIds.filter(Boolean) : null;
+    const tagsFilter = normalizeTags(req.body?.tags).map(t => t.toLowerCase());
 
     if (!message) return res.status(400).json({ ok: false, error: 'message required' });
     if (message.length > 4500) return res.status(400).json({ ok: false, error: 'message too long (LINE 5000 char limit)' });
@@ -1659,7 +1834,19 @@ app.post('/api/manual-broadcast', requireAdmin, async (req, res) => {
       const contacts = readJson(CONTACTS_FILE, []);
       targets = contacts
         .filter(c => c && c.userId)
-        .filter(c => segment === 'all' ? true : (c.enabled !== false))
+        .filter(c => {
+          // segment 決定基礎池
+          if (segment === 'all') return true;
+          if (segment === 'tags') return c.enabled !== false;
+          return c.enabled !== false;  // 預設 enabled
+        })
+        .filter(c => {
+          // 若是 tags segment，進一步要求至少符合一個 tag
+          if (segment !== 'tags') return true;
+          if (tagsFilter.length === 0) return false;  // tag 模式必須給至少一個
+          const tags = normalizeTags(c.tags).map(t => t.toLowerCase());
+          return tagsFilter.some(t => tags.includes(t));
+        })
         .map(c => c.userId);
     }
 
@@ -1704,12 +1891,294 @@ app.post('/api/manual-broadcast', requireAdmin, async (req, res) => {
 app.get('/api/manual-broadcast/preview', requireAdmin, (req, res) => {
   try {
     const segment = String(req.query.segment || 'enabled').trim();
+    const tagsFilter = normalizeTags(String(req.query.tags || '').split(',')).map(t => t.toLowerCase());
     const contacts = readJson(CONTACTS_FILE, []);
     const count = contacts
       .filter(c => c && c.userId)
-      .filter(c => segment === 'all' ? true : (c.enabled !== false))
+      .filter(c => {
+        if (segment === 'all') return true;
+        return c.enabled !== false;
+      })
+      .filter(c => {
+        if (segment !== 'tags') return true;
+        if (tagsFilter.length === 0) return false;
+        const tags = normalizeTags(c.tags).map(t => t.toLowerCase());
+        return tagsFilter.some(t => tags.includes(t));
+      })
       .length;
-    res.json({ ok: true, segment, count });
+    res.json({ ok: true, segment, tags: tagsFilter, count });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// ──────────────────────────────────────────────
+//  排程推播 Scheduled Broadcasts  (Tier-2 #7-B)
+// ──────────────────────────────────────────────
+// 需要 Supabase。SQL migration: sql/scheduled_broadcasts.sql
+
+function requireSupabase(res) {
+  if (!supabase) {
+    res.status(503).json({ ok: false, error: 'Supabase not configured' });
+    return false;
+  }
+  return true;
+}
+
+// 建立一筆排程廣播
+// POST /api/scheduled-broadcasts
+// body: { scheduled_at, message, segment?, tags?, userIds?, note? }
+app.post('/api/scheduled-broadcasts', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const b = req.body || {};
+    const message = String(b.message || '').trim();
+    const segment = String(b.segment || 'enabled').trim();
+    const scheduledAtStr = String(b.scheduled_at || '').trim();
+    const note = String(b.note || '').slice(0, 200) || null;
+    const tags = normalizeTags(b.tags);
+    const userIds = Array.isArray(b.userIds) ? b.userIds.filter(Boolean).map(String) : [];
+
+    if (!message) return res.status(400).json({ ok: false, error: 'message required' });
+    if (message.length > 4500) return res.status(400).json({ ok: false, error: 'message too long' });
+    if (!scheduledAtStr) return res.status(400).json({ ok: false, error: 'scheduled_at required' });
+
+    const scheduledAt = new Date(scheduledAtStr);
+    if (isNaN(scheduledAt.getTime())) return res.status(400).json({ ok: false, error: 'invalid scheduled_at' });
+    // 限制：必須是未來時間（或 1 分鐘內，方便測試）
+    if (scheduledAt.getTime() < Date.now() - 60 * 1000) {
+      return res.status(400).json({ ok: false, error: 'scheduled_at must be in the future' });
+    }
+    if (segment === 'tags' && tags.length === 0) {
+      return res.status(400).json({ ok: false, error: 'tags segment requires at least one tag' });
+    }
+    if (segment === 'custom' && userIds.length === 0) {
+      return res.status(400).json({ ok: false, error: 'custom segment requires userIds' });
+    }
+
+    const payload = {
+      scheduled_at: scheduledAt.toISOString(),
+      message,
+      segment,
+      tags: tags.length ? tags : null,
+      user_ids: userIds.length ? userIds : null,
+      note,
+      created_by: (req.headers['x-admin-token'] || '').slice(0, 12)
+    };
+
+    const { data, error } = await supabase
+      .from('scheduled_broadcasts')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, row: data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 列出排程廣播
+// GET /api/scheduled-broadcasts?status=pending|running|sent|failed|cancelled|all
+app.get('/api/scheduled-broadcasts', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const status = String(req.query.status || 'pending').trim();
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 50)));
+    let q = supabase.from('scheduled_broadcasts').select('*').order('scheduled_at', { ascending: true }).limit(limit);
+    if (status && status !== 'all') q = q.eq('status', status);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, rows: data || [] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 取消一筆排程
+// POST /api/scheduled-broadcasts/:id/cancel
+app.post('/api/scheduled-broadcasts/:id/cancel', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: 'invalid id' });
+
+    // 只有 pending 能取消（running 已在送了）
+    const { data, error } = await supabase
+      .from('scheduled_broadcasts')
+      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('status', 'pending')
+      .select();
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    if (!data || data.length === 0) return res.status(409).json({ ok: false, error: 'not cancellable (maybe already running/sent)' });
+    res.json({ ok: true, row: data[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// ──────────────────────────────────────────────
+//  AI 草稿模板庫  (Tier-2 #7-D)
+// ──────────────────────────────────────────────
+// SQL migration: sql/reply_templates.sql
+
+// GET /api/reply-templates?q=...
+app.get('/api/reply-templates', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const q = String(req.query.q || '').trim();
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 100)));
+    let query = supabase.from('reply_templates').select('*')
+      .order('last_used_at', { ascending: false, nullsFirst: false })
+      .order('use_count', { ascending: false })
+      .limit(limit);
+    if (q && q.length >= 1) {
+      const pat = '%' + q.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%';
+      query = query.or(`title.ilike.${pat},body.ilike.${pat}`);
+    }
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, rows: data || [] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// POST /api/reply-templates  body: { title, body, tags? }
+app.post('/api/reply-templates', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const title = String(req.body?.title || '').trim().slice(0, 100);
+    const body = String(req.body?.body || '').trim();
+    const tags = normalizeTags(req.body?.tags);
+    if (!title) return res.status(400).json({ ok: false, error: 'title required' });
+    if (!body) return res.status(400).json({ ok: false, error: 'body required' });
+    if (body.length > 4500) return res.status(400).json({ ok: false, error: 'body too long' });
+
+    // upsert by title
+    const payload = {
+      title, body,
+      tags: tags.length ? tags : null,
+      updated_at: new Date().toISOString(),
+      created_by: (req.headers['x-admin-token'] || '').slice(0, 12)
+    };
+    const { data, error } = await supabase
+      .from('reply_templates')
+      .upsert(payload, { onConflict: 'title' })
+      .select()
+      .single();
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, row: data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// POST /api/reply-templates/:id/use  —— 套用時呼叫以更新 use_count / last_used_at
+app.post('/api/reply-templates/:id/use', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: 'invalid id' });
+
+    // 讀再更新（避免 Supabase rpc increment 依賴）
+    const { data: curr, error: readErr } = await supabase
+      .from('reply_templates').select('use_count').eq('id', id).single();
+    if (readErr) return res.status(404).json({ ok: false, error: readErr.message });
+
+    const { data, error } = await supabase
+      .from('reply_templates')
+      .update({ use_count: (curr?.use_count || 0) + 1, last_used_at: new Date().toISOString() })
+      .eq('id', id)
+      .select().single();
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, row: data });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// DELETE /api/reply-templates/:id
+app.delete('/api/reply-templates/:id', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ ok: false, error: 'invalid id' });
+    const { error } = await supabase.from('reply_templates').delete().eq('id', id);
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// ──────────────────────────────────────────────
+//  對話歷史搜尋  (Tier-2 #7-C)
+// ──────────────────────────────────────────────
+// 從 Supabase interaction_logs (LINE 訊息) 做 ilike 搜尋
+
+// GET /api/history/search?q=XXX&days=30&limit=50&userId=U...
+app.get('/api/history/search', requireAdmin, async (req, res) => {
+  try {
+    if (!requireSupabase(res)) return;
+    const q = String(req.query.q || '').trim();
+    const days = Math.min(365, Math.max(1, Number(req.query.days || 30)));
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit || 50)));
+    const userId = String(req.query.userId || '').trim();
+    if (!q) return res.status(400).json({ ok: false, error: 'q required' });
+    if (q.length < 2) return res.status(400).json({ ok: false, error: 'q too short (>=2 chars)' });
+
+    const sinceIso = new Date(Date.now() - days * 86400 * 1000).toISOString();
+
+    // Supabase-js 的 ilike pattern
+    const pattern = '%' + q.replace(/%/g, '\\%').replace(/_/g, '\\_') + '%';
+
+    let query = supabase
+      .from('interaction_logs')
+      .select('id,client_id,user_id,type,content,created_at')
+      .ilike('content', pattern)
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (userId) query = query.eq('user_id', userId);
+
+    const { data, error } = await query;
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+
+    // 把 user_id 反查姓名（用本地 contacts.json）
+    const contacts = readJson(CONTACTS_FILE, []);
+    const nameMap = new Map(contacts.filter(c => c && c.userId).map(c => [c.userId, c.name || '']));
+
+    const rows = (data || []).map(r => ({
+      id: r.id,
+      user_id: r.user_id,
+      client_id: r.client_id,
+      type: r.type,
+      content: r.content,
+      created_at: r.created_at,
+      display_name: nameMap.get(r.user_id) || ''
+    }));
+
+    res.json({ ok: true, q, days, total: rows.length, rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
+// 預覽目前條件會打到幾位（不寫入 DB）
+// GET /api/scheduled-broadcasts/preview?segment=...&tags=a,b
+app.get('/api/scheduled-broadcasts/preview', requireAdmin, (req, res) => {
+  try {
+    const segment = String(req.query.segment || 'enabled').trim();
+    const tags = normalizeTags(String(req.query.tags || '').split(','));
+    const userIds = String(req.query.userIds || '').split(',').map(s => s.trim()).filter(Boolean);
+    const rootDir = path.join(__dirname, '..');
+    const { targets, error } = loadScheduledTargets(segment, tags, userIds, rootDir);
+    if (error) return res.status(500).json({ ok: false, error });
+    res.json({ ok: true, segment, tags, count: targets.length });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err && err.message) });
   }
@@ -1730,4 +2199,22 @@ app.listen(PORT, HOST, () => {
     console.log(`📱 需要 iPhone 同 WiFi 存取？啟動前加  DASHBOARD_HOST=0.0.0.0`);
   }
   console.log(`Admin token file: ${ADMIN_TOKEN_FILE}`);
+
+  // 啟動排程推播 worker
+  try {
+    startScheduledBroadcastWorker({
+      supabase,
+      linePush,
+      rootDir: path.join(__dirname, '..')
+    });
+  } catch (e) {
+    console.warn('[scheduled-broadcast] worker 啟動失敗:', e.message);
+  }
+
+  // 啟動 retention cleaner
+  try {
+    startRetentionCleaner({ supabase });
+  } catch (e) {
+    console.warn('[retention] cleaner 啟動失敗:', e.message);
+  }
 });

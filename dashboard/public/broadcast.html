@@ -54,9 +54,16 @@
   .btn.ok{background:var(--ok)}
   .btn.sm{padding:6px 10px;font-size:12px}
   .btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .segbar{display:flex;gap:16px;font-size:13px;color:var(--muted)}
+  .segbar{display:flex;gap:16px;font-size:13px;color:var(--muted);flex-wrap:wrap}
   .segbar label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin:0;color:var(--text)}
   .segbar input[type=radio]{margin:0}
+  .tag-picker{display:flex;gap:8px;flex-wrap:wrap;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-soft);min-height:42px}
+  .tag-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);cursor:pointer;font-size:12px;user-select:none}
+  .tag-chip:hover{border-color:var(--accent)}
+  .tag-chip input{margin:0}
+  .tag-chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .tag-chip .cnt{color:var(--muted);font-size:11px}
+  .tag-chip.on .cnt{color:rgba(255,255,255,.8)}
 
   .msg{margin-top:12px;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.6;
     background:var(--panel2);border:1px solid var(--line2)}
@@ -118,6 +125,8 @@
       🕒 待審核 <span id="pendingBadge" class="count-badge hide">0</span>
     </div>
     <div class="tab" data-tab="broadcast" onclick="switchTab('broadcast')">📣 手動廣播</div>
+    <div class="tab" data-tab="scheduled" onclick="switchTab('scheduled')">⏰ 排程推播</div>
+    <div class="tab" data-tab="search" onclick="switchTab('search')">🔍 對話搜尋</div>
     <div class="tab" data-tab="history" onclick="switchTab('history')">📜 審核紀錄</div>
   </div>
 
@@ -152,12 +161,35 @@
       <div class="segbar">
         <label><input type="radio" name="seg" value="enabled" checked> 已啟用（AI 回覆）的客戶</label>
         <label><input type="radio" name="seg" value="all"> 全部客戶</label>
+        <label><input type="radio" name="seg" value="tags"> 依標籤分群</label>
         <label><input type="radio" name="seg" value="custom"> 指定 userId</label>
+      </div>
+
+      <div id="bcTagsBox" class="hide" style="margin-top:10px">
+        <label style="display:flex;justify-content:space-between;align-items:center">
+          <span>選擇標籤（OR 邏輯，有任何一個就符合）</span>
+          <button class="btn ghost sm" onclick="refreshTagList()" type="button">🔄 重新整理</button>
+        </label>
+        <div id="bcTagList" class="tag-picker">載入中…</div>
+        <div class="hint" style="margin-top:6px">
+          未看到要用的標籤？到 <a href="/index.html" style="color:var(--accent)">CRM 儀表板</a> 的客戶列表裡幫客戶加上標籤。
+        </div>
       </div>
 
       <div id="bcCustomBox" class="hide" style="margin-top:10px">
         <label>userId 清單（逗號或換行分隔）</label>
         <textarea id="bcUids" placeholder="Uxxxxxxxxxxxxxxxx, Uxxxxxxxxxxxxxxxx..."></textarea>
+      </div>
+
+      <label style="margin-top:14px">送出時機</label>
+      <div class="segbar">
+        <label><input type="radio" name="when" value="now" checked> 立即送出</label>
+        <label><input type="radio" name="when" value="later"> 排程送出</label>
+      </div>
+      <div id="bcWhenBox" class="hide" style="margin-top:10px">
+        <label>指定送出時間（本機時區）</label>
+        <input type="datetime-local" id="bcScheduleAt" style="padding:6px 8px;font-size:14px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
+        <div class="hint" style="margin-top:4px">送出前都可以在「⏰ 排程推播」tab 取消。</div>
       </div>
 
       <div class="btn-row">
@@ -166,6 +198,47 @@
       </div>
 
       <div id="bcMsgBox"></div>
+    </div>
+  </section>
+
+  <!-- ====================  Scheduled ==================== -->
+  <section id="tab-scheduled" class="hide">
+    <div class="panel">
+      <h2>排程推播清單
+        <button class="btn ghost sm" style="float:right" onclick="loadScheduled()">重新整理</button>
+      </h2>
+      <div class="segbar" style="margin-bottom:12px">
+        <label><input type="radio" name="sstatus" value="pending" checked onchange="loadScheduled()"> 排隊中</label>
+        <label><input type="radio" name="sstatus" value="running" onchange="loadScheduled()"> 發送中</label>
+        <label><input type="radio" name="sstatus" value="sent" onchange="loadScheduled()"> 已完成</label>
+        <label><input type="radio" name="sstatus" value="cancelled" onchange="loadScheduled()"> 已取消</label>
+        <label><input type="radio" name="sstatus" value="failed" onchange="loadScheduled()"> 失敗</label>
+      </div>
+      <div id="scheduledList"></div>
+    </div>
+  </section>
+
+  <!-- ====================  Search ==================== -->
+  <section id="tab-search" class="hide">
+    <div class="panel">
+      <h2>對話歷史搜尋</h2>
+      <div class="hint">跨所有客戶搜尋 LINE 訊息內容。最短 2 個字。</div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <input type="text" id="searchQ" placeholder="例如：理賠 / 退保 / 台中"
+               style="flex:1;min-width:200px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)"
+               onkeydown="if(event.key==='Enter') doSearch()">
+        <select id="searchDays" style="padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)">
+          <option value="7">近 7 天</option>
+          <option value="30" selected>近 30 天</option>
+          <option value="90">近 90 天</option>
+          <option value="180">近半年</option>
+          <option value="365">近一年</option>
+        </select>
+        <button class="btn" onclick="doSearch()">搜尋</button>
+      </div>
+
+      <div id="searchResult" style="margin-top:16px"></div>
     </div>
   </section>
 
@@ -236,8 +309,11 @@ function switchTab(name){
   });
   document.getElementById('tab-approval').classList.toggle('hide', name!=='approval');
   document.getElementById('tab-broadcast').classList.toggle('hide', name!=='broadcast');
+  document.getElementById('tab-scheduled').classList.toggle('hide', name!=='scheduled');
+  document.getElementById('tab-search').classList.toggle('hide', name!=='search');
   document.getElementById('tab-history').classList.toggle('hide', name!=='history');
   if(name==='approval') loadApproval();
+  if(name==='scheduled') loadScheduled();
   if(name==='history') loadHistory();
 }
 
@@ -287,7 +363,13 @@ function renderItem(row){
       <span class="tag">客戶訊息</span>${esc(row.incoming_text||'')}
     </div>
     <div class="q-draft">
-      <label>AI 草稿（可編輯後核可）</label>
+      <label style="display:flex;justify-content:space-between;align-items:center">
+        <span>AI 草稿（可編輯後核可）</span>
+        <span>
+          <button class="btn ghost sm" onclick="openTemplatePicker(${row.id})" type="button">📋 套用模板</button>
+          <button class="btn ghost sm" onclick="saveAsTemplate(${row.id})" type="button">💾 存為模板</button>
+        </span>
+      </label>
       <textarea id="draft-${row.id}">${esc(row.draft_reply||'')}</textarea>
     </div>
     <div class="btn-row">
@@ -296,6 +378,44 @@ function renderItem(row){
       <span id="r-msg-${row.id}" style="font-size:12px;color:var(--muted);align-self:center"></span>
     </div>
   </div>`;
+}
+
+// ============= AI 草稿模板庫 =============
+async function openTemplatePicker(rowId){
+  try{
+    const r = await api('/api/reply-templates?limit=50');
+    const rows = r.rows || [];
+    if(rows.length===0){
+      alert('目前沒有模板。先點「💾 存為模板」把這份草稿存起來當第一個模板吧。');
+      return;
+    }
+    const list = rows.map((t,i)=>`${i+1}) ${t.title} ${t.use_count?('[用過 '+t.use_count+' 次]'):''}`).join('\n');
+    const input = prompt('輸入要套用的模板編號：\n\n'+list, '1');
+    if(input===null) return;
+    const idx = Number(input)-1;
+    if(!Number.isInteger(idx) || idx<0 || idx>=rows.length){ alert('編號錯誤'); return; }
+    const tpl = rows[idx];
+    const ta = document.getElementById('draft-'+rowId);
+    if(ta){ ta.value = tpl.body; }
+    // 更新統計
+    try{ await api('/api/reply-templates/'+tpl.id+'/use', {method:'POST'}); }catch(_){}
+  }catch(e){
+    alert('讀取模板失敗：'+e.message);
+  }
+}
+
+async function saveAsTemplate(rowId){
+  const ta = document.getElementById('draft-'+rowId);
+  if(!ta || !ta.value.trim()){ alert('草稿是空的'); return; }
+  const title = prompt('模板名稱（同名會覆蓋，例如：「理賠流程標準話術」）：', '');
+  if(!title || !title.trim()) return;
+  try{
+    const r = await api('/api/reply-templates', {method:'POST', body:{title:title.trim(), body:ta.value}});
+    if(r.ok) alert('✅ 已存為模板「'+title.trim()+'」');
+    else alert('❌ 儲存失敗：'+(r.error||'unknown'));
+  }catch(e){
+    alert('❌ 儲存失敗：'+e.message);
+  }
 }
 
 async function approve(id){
@@ -364,12 +484,43 @@ async function loadHistory(){
 // ================ broadcast ================
 document.querySelectorAll('input[name=seg]').forEach(r=>{
   r.addEventListener('change', ()=>{
-    document.getElementById('bcCustomBox').classList.toggle('hide', r.value!=='custom' || !r.checked);
+    const seg = document.querySelector('input[name=seg]:checked').value;
+    document.getElementById('bcCustomBox').classList.toggle('hide', seg!=='custom');
+    document.getElementById('bcTagsBox').classList.toggle('hide', seg!=='tags');
+    if(seg==='tags') refreshTagList();
   });
 });
 document.getElementById('bcMsg').addEventListener('input', (e)=>{
   document.getElementById('bcCount').textContent = e.target.value.length + ' 字';
 });
+
+// tag picker state: 目前選中的 tag 字串集合
+const _selectedTags = new Set();
+async function refreshTagList(){
+  const box = document.getElementById('bcTagList');
+  box.innerHTML = '載入中…';
+  try{
+    const r = await api('/api/contacts/tags');
+    if(!r.tags || r.tags.length===0){
+      box.innerHTML = '<div class="hint" style="margin:0">目前沒有任何標籤。先到 CRM 儀表板幫客戶加上標籤吧。</div>';
+      return;
+    }
+    box.innerHTML = r.tags.map(t=>{
+      const on = _selectedTags.has(t.name) ? ' on' : '';
+      const safeName = esc(t.name);
+      const dataName = safeName.replace(/"/g,'&quot;');
+      return '<span class="tag-chip'+on+'" data-tag="'+dataName+'" onclick="toggleTag(this)">'+
+             safeName+' <span class="cnt">('+t.count+')</span></span>';
+    }).join('');
+  }catch(e){
+    box.innerHTML = '<div class="msg err">載入標籤失敗：'+esc(e.message)+'</div>';
+  }
+}
+function toggleTag(el){
+  const tag = el.getAttribute('data-tag');
+  if(_selectedTags.has(tag)){ _selectedTags.delete(tag); el.classList.remove('on'); }
+  else { _selectedTags.add(tag); el.classList.add('on'); }
+}
 
 function collectBroadcast(){
   const message = document.getElementById('bcMsg').value.trim();
@@ -379,10 +530,20 @@ function collectBroadcast(){
     const uids = document.getElementById('bcUids').value
       .split(/[\s,，\n]+/).map(s=>s.trim()).filter(Boolean);
     payload.userIds = uids;
+  } else if(seg==='tags'){
+    payload.segment = 'tags';
+    payload.tags = [..._selectedTags];
   } else {
     payload.segment = seg;
   }
   return {payload, seg, message};
+}
+
+function segLabelFor(payload){
+  if(payload.userIds) return '指定 '+payload.userIds.length+' 人';
+  if(payload.segment==='all') return '全部客戶';
+  if(payload.segment==='tags') return '標籤 [' + (payload.tags||[]).join(', ') + ']';
+  return '已啟用客戶';
 }
 
 async function previewTargets(){
@@ -392,6 +553,14 @@ async function previewTargets(){
   try{
     if(seg==='custom'){
       box.innerHTML = `<div class="msg">✅ 指定 ${payload.userIds.length} 個 userId。</div>`;
+    } else if(seg==='tags'){
+      if(!payload.tags || payload.tags.length===0){
+        box.innerHTML = '<div class="msg err">請先選擇至少一個標籤。</div>';
+        return;
+      }
+      const url = '/api/manual-broadcast/preview?segment=tags&tags='+encodeURIComponent(payload.tags.join(','));
+      const r = await api(url);
+      box.innerHTML = `<div class="msg">✅ 符合標籤條件（${esc(payload.tags.join(' / '))}）的客戶：<b>${r.count||0}</b> 位。</div>`;
     } else {
       const r = await api('/api/manual-broadcast/preview?segment='+encodeURIComponent(seg));
       box.innerHTML = `<div class="msg">✅ 將發送給 <b>${r.count||0}</b> 位客戶（${seg==='all'?'全部':'已啟用'}）。</div>`;
@@ -410,8 +579,47 @@ async function doBroadcast(){
   if(payload.userIds && payload.userIds.length===0){
     box.innerHTML = '<div class="msg err">請輸入至少一個 userId</div>'; return;
   }
-  const segLabel = payload.userIds ? ('指定 '+payload.userIds.length+' 人') :
-                   (payload.segment==='all'?'全部客戶':'已啟用客戶');
+  if(payload.segment==='tags' && (!payload.tags || payload.tags.length===0)){
+    box.innerHTML = '<div class="msg err">使用「依標籤分群」時至少要選一個標籤</div>'; return;
+  }
+  const segLabel = segLabelFor(payload);
+  const when = document.querySelector('input[name=when]:checked').value;
+  const schedAtLocal = document.getElementById('bcScheduleAt').value;  // "YYYY-MM-DDTHH:MM" local
+
+  // 排程模式
+  if(when==='later'){
+    if(!schedAtLocal){ box.innerHTML = '<div class="msg err">請選擇排程時間</div>'; return; }
+    const schedDate = new Date(schedAtLocal);
+    if(isNaN(schedDate.getTime())){ box.innerHTML = '<div class="msg err">排程時間格式錯誤</div>'; return; }
+    if(schedDate.getTime() < Date.now() - 60*1000){
+      box.innerHTML = '<div class="msg err">排程時間必須是未來的時間</div>'; return;
+    }
+    if(!confirm('確定在 '+schedDate.toLocaleString()+' 發送給「'+segLabel+'」？')) return;
+    btn.disabled = true;
+    box.innerHTML = '<div class="msg"><span class="spin"></span>建立排程中...</div>';
+    try{
+      const schedPayload = {
+        message: payload.message,
+        segment: payload.segment || (payload.userIds ? 'custom' : 'enabled'),
+        tags: payload.tags || [],
+        userIds: payload.userIds || [],
+        scheduled_at: schedDate.toISOString()
+      };
+      const r = await api('/api/scheduled-broadcasts', {method:'POST', body: schedPayload});
+      if(r.ok){
+        box.innerHTML = `<div class="msg ok">✅ 已建立排程 #${r.row.id}，將於 ${new Date(r.row.scheduled_at).toLocaleString()} 送出。</div>`;
+        document.getElementById('bcMsg').value='';
+        document.getElementById('bcCount').textContent='0 字';
+      } else {
+        box.innerHTML = '<div class="msg err">❌ 建立排程失敗：'+esc(r.error||'unknown')+'</div>';
+      }
+    }catch(e){
+      box.innerHTML = '<div class="msg err">❌ 建立排程失敗：'+esc(e.message)+'</div>';
+    }finally{ btn.disabled = false; }
+    return;
+  }
+
+  // 立即送
   if(!confirm('確定發送給「'+segLabel+'」？\n\n訊息內容：\n'+message.slice(0,200)+(message.length>200?'...':''))) return;
   btn.disabled = true;
   box.innerHTML = '<div class="msg"><span class="spin"></span>發送中...（大量用戶可能需要數分鐘）</div>';
@@ -431,6 +639,103 @@ async function doBroadcast(){
     box.innerHTML = '<div class="msg err">❌ 發送失敗：'+esc(e.message)+'</div>';
   }finally{
     btn.disabled = false;
+  }
+}
+
+// ================ scheduled broadcasts ================
+document.querySelectorAll('input[name=when]').forEach(r=>{
+  r.addEventListener('change', ()=>{
+    const when = document.querySelector('input[name=when]:checked').value;
+    document.getElementById('bcWhenBox').classList.toggle('hide', when!=='later');
+    if(when==='later'){
+      const ipt = document.getElementById('bcScheduleAt');
+      if(!ipt.value){
+        // 預設帶入一小時後
+        const d = new Date(Date.now() + 60*60*1000);
+        const pad = n=>String(n).padStart(2,'0');
+        ipt.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+      }
+    }
+  });
+});
+
+async function loadScheduled(){
+  const box = document.getElementById('scheduledList');
+  const status = document.querySelector('input[name=sstatus]:checked').value;
+  box.innerHTML = '<div class="msg"><span class="spin"></span>載入中...</div>';
+  try{
+    const r = await api('/api/scheduled-broadcasts?status='+encodeURIComponent(status)+'&limit=100');
+    const rows = r.rows || [];
+    if(rows.length===0){ box.innerHTML = '<div class="msg">目前沒有 ['+status+'] 的排程。</div>'; return; }
+    box.innerHTML = rows.map(x=>{
+      const segLabel = x.segment==='tags' ? ('標籤 ['+(x.tags||[]).join(', ')+']') :
+                       x.segment==='custom' ? ('指定 '+((x.user_ids||[]).length)+' 人') :
+                       x.segment==='all' ? '全部客戶' : '已啟用客戶';
+      const result = (x.status==='sent') ?
+        `<div class="hint">✅ ${x.sent_count||0} 成功 / ${x.failed_count||0} 失敗 / 共 ${x.total_targets||0}</div>` :
+        (x.last_error ? `<div class="hint" style="color:#d00">⚠ ${esc(x.last_error)}</div>` : '');
+      const cancelBtn = x.status==='pending'
+        ? `<button class="btn ghost sm" onclick="cancelScheduled(${x.id})">取消排程</button>` : '';
+      return `<div class="item" style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;background:var(--bg-soft)">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px">
+          <div>
+            <b>#${x.id}</b>
+            <span style="margin-left:8px;padding:2px 8px;border-radius:999px;background:#eef;font-size:11px">${esc(x.status)}</span>
+            <span style="margin-left:8px;color:var(--muted);font-size:12px">${new Date(x.scheduled_at).toLocaleString()}</span>
+          </div>
+          <div>${cancelBtn}</div>
+        </div>
+        <div class="hint" style="margin:4px 0">對象：${esc(segLabel)}</div>
+        <div style="white-space:pre-wrap;padding:8px;background:var(--bg);border-radius:6px;font-size:13px;max-height:120px;overflow:auto">${esc(x.message||'')}</div>
+        ${result}
+      </div>`;
+    }).join('');
+  }catch(e){
+    box.innerHTML = '<div class="msg err">❌ 載入失敗：'+esc(e.message)+'</div>';
+  }
+}
+
+async function cancelScheduled(id){
+  if(!confirm('確定取消排程 #'+id+' ？')) return;
+  try{
+    const r = await api('/api/scheduled-broadcasts/'+id+'/cancel', {method:'POST'});
+    if(r.ok){ await loadScheduled(); }
+    else alert('取消失敗：'+(r.error||'unknown'));
+  }catch(e){
+    alert('取消失敗：'+e.message);
+  }
+}
+
+// ================ conversation search ================
+async function doSearch(){
+  const q = document.getElementById('searchQ').value.trim();
+  const days = document.getElementById('searchDays').value;
+  const box = document.getElementById('searchResult');
+  if(!q){ box.innerHTML = '<div class="msg err">請輸入關鍵字</div>'; return; }
+  if(q.length<2){ box.innerHTML = '<div class="msg err">至少 2 個字</div>'; return; }
+  box.innerHTML = '<div class="msg"><span class="spin"></span>搜尋中...</div>';
+  try{
+    const r = await api('/api/history/search?q='+encodeURIComponent(q)+'&days='+days+'&limit=100');
+    const rows = r.rows || [];
+    if(rows.length===0){ box.innerHTML = '<div class="msg">找不到符合「'+esc(q)+'」的訊息。</div>'; return; }
+    const hi = (s)=>{
+      const safe = esc(s||'');
+      // 把搜尋字高亮
+      return safe.replace(new RegExp(esc(q).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'),
+        m=>'<mark style="background:#ff6;padding:0 2px">'+m+'</mark>');
+    };
+    box.innerHTML = '<div class="hint">共 '+rows.length+' 筆</div>' + rows.map(x=>{
+      const who = x.display_name ? (esc(x.display_name)+' ('+esc(x.user_id.slice(0,8))+'…)') : esc(x.user_id||'');
+      return `<div class="item" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px;background:var(--bg-soft)">
+        <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:4px">
+          <span><b style="color:var(--text)">${who}</b></span>
+          <span>${new Date(x.created_at).toLocaleString()}</span>
+        </div>
+        <div style="white-space:pre-wrap;font-size:13px;line-height:1.6">${hi(x.content)}</div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    box.innerHTML = '<div class="msg err">❌ '+esc(e.message)+'</div>';
   }
 }
 
