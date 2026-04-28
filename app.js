@@ -447,6 +447,8 @@ async function switchRichMenuForUser(source, richMenuId) {
 }
 
 // ── 智能模型路由：根據訊息複雜度自動選擇模型 ──────────────
+// 設計原則：保險/健康/投資是這 bot 的 base case 主題，純主題詞不該觸發 complex。
+// 真正需要 Sonnet 的訊號是：真情緒、假設推理、明確比較分析需求、長訊息。
 function classifyMessageComplexity(text) {
   if (!text) return 'simple';
   const t = text.trim();
@@ -454,24 +456,22 @@ function classifyMessageComplexity(text) {
   // 超短訊息 → 簡單
   if (t.length < 10) return 'simple';
 
-  // 複雜情境關鍵字
-  const complexPatterns = [
-    /理賠|核保|保單|條款|保費|投保|續保|除外|批註/,
-    /稅|節稅|遺產|傳承|贈與|申報|扣除額/,
-    /退休|年金|長照|失能|養老|規劃|配置/,
-    /基金|股票|投資|ETF|債券|宣告利率|內扣/,
-    /手術|住院|疾病|確診|體況|三高|糖尿病|高血壓|癌症/,
-    /比較|差別|分析|建議|推薦|哪個比較好|值不值得/,
-    /擔心|不安|焦慮|難過|壓力|不知道怎麼辦/,  // 情緒
-    /如果|假設|萬一|要是|情況下/,              // 假設推理
-  ];
-  for (const p of complexPatterns) {
-    if (p.test(t)) return 'complex';
-  }
+  // 1) 真情緒類（需要溫度與同理深度）→ Sonnet
+  if (/擔心|不安|焦慮|難過|沮喪|壓力|崩潰|好累|疲憊|心煩|生氣|憤怒|害怕|不知道怎麼辦|怎麼辦才好|不曉得該/.test(t)) return 'complex';
 
-  // 長訊息（>40字）通常需要深度回應
-  if (t.length > 40) return 'complex';
+  // 2) 假設推理（需要推理鏈）→ Sonnet
+  if (/如果|假設|萬一|要是|倘若|情況下|的話會|的話該/.test(t)) return 'complex';
 
+  // 3) 明確比較/建議需求且訊息夠長（>25 字）→ Sonnet
+  //    短句帶「建議」這種單字太常見，不夠長就還是 simple
+  if (t.length > 25 && /比較|差別|分析|哪個比較好|值不值得|該選哪|推薦哪|選擇哪/.test(t)) return 'complex';
+
+  // 4) 長訊息（>50 字）→ Sonnet
+  //    從 40 提高到 50，避免 LINE 客戶長一點的詢問就升級
+  if (t.length > 50) return 'complex';
+
+  // 其他全部走 simple → Haiku
+  // 包含一般保單詢問、體況詢問、產品問題、流程問題等 base case
   return 'simple';
 }
 
