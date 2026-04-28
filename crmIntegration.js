@@ -170,18 +170,44 @@ ${conversationText}`;
     });
     summary = res.content[0].text.trim();
   } catch (err) {
-    console.error('摘要 AI 呼叫失敗：', err.message);
+    // err.message 對 Anthropic SDK 來說常常是 "400 {...JSON...}"，先解一層
+    const status = err && (err.status || err.statusCode);
+    const rawMsg = (err && err.message) || String(err);
+    let parsedMsg = rawMsg;
+    try {
+      const m = rawMsg.match(/\{.*\}$/s);
+      if (m) {
+        const j = JSON.parse(m[0]);
+        if (j && j.error && j.error.message) parsedMsg = j.error.message;
+      }
+    } catch (_) { /* keep rawMsg */ }
+    console.error(`摘要 AI 呼叫失敗 [status=${status || 'n/a'}]：${parsedMsg}`);
+
     // 錯誤寫入 Supabase，方便診斷
+    // 注意：supabase-js v2 的 .insert() 回傳的是 PostgrestFilterBuilder（thenable），
+    //      它沒有 .catch() 方法。一定要用 try/catch 包，不能 .catch(() => {})。
+    //      之前用 .catch(() => {}) 會丟 "TypeError: ... .catch is not a function"，
+    //      worker retry 3 次都跑這條，把真正的 Anthropic 錯誤蓋掉。
     if (supabase) {
-      await supabase.from('interaction_logs').insert({
-        client_id: `line_${userId}`,
-        user_id: userId,
-        display_name: displayName || '',
-        type: '❌ ERROR',
-        content: `AI 呼叫失敗：${err.message}`,
-      }).catch(() => {});
+      try {
+        await supabase.from('interaction_logs').insert({
+          client_id:    `line_${userId}`,
+          user_id:      userId,
+          display_name: displayName || '',
+          type:         '❌ ERROR',
+          content:      `AI 呼叫失敗 [${status || 'n/a'}]：${parsedMsg}`.slice(0, 1000),
+        });
+      } catch (logErr) {
+        console.error('寫入 ❌ ERROR log 也失敗：', logErr && logErr.message);
+      }
     }
-    return;
+
+    // 4xx → 通常是餘額 / auth / model 名稱問題，retry 也沒用
+    //        return 讓 worker markDone（不堆 queue），下次新訊息進來會重新 enqueue
+    // 5xx / 無 status / timeout → throw 讓 worker retry
+    const isPermanent = status && status >= 400 && status < 500;
+    if (isPermanent) return;
+    throw new Error(`anthropic_transient status=${status || 'n/a'}: ${parsedMsg}`);
   }
 
   // 比對 CRM 客戶（取得 lead 物件 + client_id）
