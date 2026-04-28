@@ -163,8 +163,10 @@ async function _generateMessage(trigger, anthropicClient, personaInstruction) {
 
   if (anthropicClient) {
     try {
+      // 主動關心訊息 80 字以內，Haiku 4.5 完全足夠 — 之前用 Opus 4.5
+      // 是大材小用且吃 token 凶（Opus 比 Haiku 貴約 15 倍）
       const response = await anthropicClient.messages.create({
-        model: 'claude-opus-4-5',
+        model: 'claude-haiku-4-5',
         max_tokens: 300,
         system: personaInstruction,
         messages: [{ role: 'user', content: prompt }],

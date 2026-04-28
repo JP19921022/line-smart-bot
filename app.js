@@ -35,7 +35,12 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 const anthropicClient = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   : null;
-const CLAUDE_MODEL = 'claude-sonnet-4-6';
+// 模型分層：
+//   複雜訊息（情緒 / 長文 / 推理） → Sonnet 4.6（深度＋情緒價值）
+//   簡單訊息（短句 / 問候 / 一般詢問） → Haiku 4.5（性價比甜蜜點，比 Gemini Flash 更有人味）
+//   Vision / PDF（圖片解讀）         → Gemini Flash（多模態便宜）
+const CLAUDE_MODEL       = 'claude-sonnet-4-6';
+const CLAUDE_HAIKU_MODEL = 'claude-haiku-4-5';
 const KNOWLEDGE_PATH = path.resolve(__dirname, 'knowledge', 'entries.json');
 const USER_LOG_PATH = path.resolve(__dirname, 'logs', 'user_ids.log');
 const GLOBAL_MANUAL_FILE = path.resolve(__dirname, 'status', 'global_manual.json');
@@ -481,6 +486,18 @@ async function _replyWithClaude(prompt, messages) {
   return response?.content?.[0]?.text?.trim() || null;
 }
 
+// 簡單訊息走 Haiku — 比 Gemini Flash 更有人味，但 token 成本仍低（約 Sonnet 的 1/3）
+async function _replyWithHaiku(prompt, messages) {
+  if (!anthropicClient) return null;
+  const response = await anthropicClient.messages.create({
+    model: CLAUDE_HAIKU_MODEL,
+    max_tokens: 4096,
+    system: personaInstruction,
+    messages,
+  });
+  return response?.content?.[0]?.text?.trim() || null;
+}
+
 async function _replyWithGemini(prompt, messages) {
   if (!genAI) return null;
   const model = genAI.getGenerativeModel({
@@ -529,27 +546,38 @@ async function getAssistantReply(event, rawText) {
   const messages = [...history, { role: 'user', content: prompt }];
 
   // 智能路由：判斷訊息複雜度
+  //   複雜（情緒 / 長文 / 推理） → Sonnet 4.6  → Haiku 4.5  → Gemini Flash
+  //   簡單（短句 / 一般詢問）    → Haiku 4.5  → Sonnet 4.6 → Gemini Flash
+  // Gemini 留在最末是降級保險（萬一 Anthropic 餘額/額度出狀況，bot 還能講話）
   const complexity = classifyMessageComplexity(rawText);
   const isComplex = complexity === 'complex';
-  console.log(`[路由] ${isComplex ? '🧠 複雜 → Claude' : '⚡ 簡單 → Gemini'} | "${rawText?.slice(0, 30)}"`);
+  console.log(`[路由] ${isComplex ? '🧠 複雜 → Sonnet' : '⚡ 簡單 → Haiku'} | "${rawText?.slice(0, 30)}"`);
 
   let textResponse = null;
 
   if (isComplex) {
-    // 複雜：先用 Claude，失敗才 fallback Gemini
+    // 複雜：Sonnet → Haiku → Gemini
     try { textResponse = await _replyWithClaude(prompt, messages); }
-    catch (e) { console.error('Claude 失敗，切換 Gemini：', e.message); }
+    catch (e) { console.error('Sonnet 失敗，切換 Haiku：', e.message); }
+    if (!textResponse) {
+      try { textResponse = await _replyWithHaiku(prompt, messages); }
+      catch (e) { console.error('Haiku fallback 失敗，切換 Gemini：', e.message); }
+    }
     if (!textResponse) {
       try { textResponse = await _replyWithGemini(prompt, messages); }
       catch (e) { console.error('Gemini fallback 失敗：', e.message); }
     }
   } else {
-    // 簡單：先用 Gemini，失敗才 fallback Claude
-    try { textResponse = await _replyWithGemini(prompt, messages); }
-    catch (e) { console.error('Gemini 失敗，切換 Claude：', e.message); }
+    // 簡單：Haiku → Sonnet → Gemini
+    try { textResponse = await _replyWithHaiku(prompt, messages); }
+    catch (e) { console.error('Haiku 失敗，切換 Sonnet：', e.message); }
     if (!textResponse) {
       try { textResponse = await _replyWithClaude(prompt, messages); }
-      catch (e) { console.error('Claude fallback 失敗：', e.message); }
+      catch (e) { console.error('Sonnet fallback 失敗，切換 Gemini：', e.message); }
+    }
+    if (!textResponse) {
+      try { textResponse = await _replyWithGemini(prompt, messages); }
+      catch (e) { console.error('Gemini fallback 失敗：', e.message); }
     }
   }
 
