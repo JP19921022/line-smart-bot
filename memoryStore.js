@@ -52,7 +52,9 @@ async function getRecentMemories(userId, topic, limit = 3) {
 }
 
 // ── 對話歷史（Conversation History）─────────────────────────
-const SESSION_MAX_TURNS = 50;
+// 50 → 20：以前每次帶 100 則訊息進 prompt 太貴，活躍客戶 input 動輒 50K+ tokens。
+// 重要長期記憶已透過 CRM 摘要管道存著（每 3 則對話一次），不依賴這個 history。
+const SESSION_MAX_TURNS = 20;
 // 本地快取，避免每次都打 API
 const localCache = new Map(); // userId -> messages[]
 

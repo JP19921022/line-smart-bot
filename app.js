@@ -475,13 +475,48 @@ function classifyMessageComplexity(text) {
   return 'simple';
 }
 
+// ── Prompt Caching helper ──────────────────────────────────
+// 把 messages 陣列包成 Anthropic block 格式，並在「倒數第二則」加 cache_control。
+// 用意：persona（system）本身會被 cache，再加上 history 前綴也 cache，
+//      重複對話命中時 input cost 直接 -90%。最末一則 user 訊息不 cache
+//      （它每次都不一樣，留著當 cache key 後段）。
+function _withCacheBreakpoint(messages) {
+  if (!Array.isArray(messages) || messages.length < 2) {
+    return messages; // 太短不值得 cache
+  }
+  // 倒數第二則：加 cache_control。content 從 string 轉成 [{type:'text', text, cache_control}]
+  const cloned = messages.map((m, i) => {
+    if (i !== messages.length - 2) return m;
+    const text = typeof m.content === 'string' ? m.content : null;
+    if (text === null) return m; // 已經是 array 形式（圖片等）就跳過
+    return {
+      role: m.role,
+      content: [
+        { type: 'text', text, cache_control: { type: 'ephemeral' } }
+      ]
+    };
+  });
+  return cloned;
+}
+
+// system 也用 array 形式並加 cache_control，persona ~4K tokens 命中率高
+// 用 lazy getter 因為 personaInstruction 是在檔尾才定義（透過 IIFE 讀檔）
+let _cachedSystemMemo = null;
+function _getCachedSystem() {
+  if (_cachedSystemMemo) return _cachedSystemMemo;
+  _cachedSystemMemo = [
+    { type: 'text', text: personaInstruction, cache_control: { type: 'ephemeral' } }
+  ];
+  return _cachedSystemMemo;
+}
+
 async function _replyWithClaude(prompt, messages) {
   if (!anthropicClient) return null;
   const response = await anthropicClient.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 8096,
-    system: personaInstruction,
-    messages,
+    system: _getCachedSystem(),
+    messages: _withCacheBreakpoint(messages),
   });
   return response?.content?.[0]?.text?.trim() || null;
 }
@@ -492,8 +527,8 @@ async function _replyWithHaiku(prompt, messages) {
   const response = await anthropicClient.messages.create({
     model: CLAUDE_HAIKU_MODEL,
     max_tokens: 4096,
-    system: personaInstruction,
-    messages,
+    system: _getCachedSystem(),
+    messages: _withCacheBreakpoint(messages),
   });
   return response?.content?.[0]?.text?.trim() || null;
 }
@@ -541,9 +576,8 @@ async function getAssistantReply(event, rawText) {
   const userId = event?.source?.type === 'user' ? event.source.userId : null;
   const prompt = await buildPrompt(rawText, event, displayName);
 
-  // 從 Supabase 載入對話歷史
-  const history = await memoryStore.loadSessionHistory(userId);
-  const messages = [...history, { role: 'user', content: prompt }];
+  // 從 Supabase 載入對話歷史（最多 SESSION_MAX_TURNS*2 = 40 則）
+  const fullHistory = await memoryStore.loadSessionHistory(userId);
 
   // 智能路由：判斷訊息複雜度
   //   複雜（情緒 / 長文 / 推理） → Sonnet 4.6  → Haiku 4.5  → Gemini Flash
@@ -551,7 +585,16 @@ async function getAssistantReply(event, rawText) {
   // Gemini 留在最末是降級保險（萬一 Anthropic 餘額/額度出狀況，bot 還能講話）
   const complexity = classifyMessageComplexity(rawText);
   const isComplex = complexity === 'complex';
-  console.log(`[路由] ${isComplex ? '🧠 複雜 → Sonnet' : '⚡ 簡單 → Haiku'} | "${rawText?.slice(0, 30)}"`);
+
+  // 簡單路徑只帶最近 10 turns（20 則訊息）的歷史 — 進一步省 token
+  // 複雜路徑帶完整 20 turns（40 則）— 情緒/推理需要更多 context
+  const SIMPLE_HISTORY_MESSAGES = 20;
+  const trimmedHistory = isComplex
+    ? fullHistory
+    : fullHistory.slice(-SIMPLE_HISTORY_MESSAGES);
+  const messages = [...trimmedHistory, { role: 'user', content: prompt }];
+
+  console.log(`[路由] ${isComplex ? '🧠 複雜 → Sonnet' : '⚡ 簡單 → Haiku'} | history=${trimmedHistory.length}則 | "${rawText?.slice(0, 30)}"`);
 
   let textResponse = null;
 
