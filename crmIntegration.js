@@ -26,6 +26,38 @@ try {
   console.error('[CRM] Anthropic 初始化失敗：', e.message);
 }
 
+// ── Gemini fallback client（Anthropic 餘額/額度/API 出狀況時撐住 CRM 摘要）──
+let _genAI = null;
+try {
+  if (process.env.GEMINI_API_KEY) {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    _genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    console.log('[CRM] Gemini fallback client 初始化成功');
+  }
+} catch (e) {
+  console.error('[CRM] Gemini fallback 初始化失敗：', e.message);
+}
+
+// 用 Gemini Flash 寫摘要（fallback 時用）
+async function _summarizeWithGemini(promptText) {
+  if (!_genAI) return null;
+  const model = _genAI.getGenerativeModel({ model: 'models/gemini-2.5-flash' });
+  const result = await model.generateContent(promptText);
+  return result?.response?.text()?.trim() || null;
+}
+
+// 模組層計數器：給健康 endpoint 用，資料只在 process 生命週期有效
+const _stats = {
+  startedAt: new Date().toISOString(),
+  anthropicSuccess: 0,
+  anthropicFail: 0,
+  geminiFallbackSuccess: 0,
+  geminiFallbackFail: 0,
+  lastAnthropicError: null,    // { at, status, message }
+  lastGeminiError: null,
+};
+function getStats() { return { ..._stats }; }
+
 // ── 從 Supabase 計算距離上次摘要後的新訊息數（Render 重啟也不歸零）──
 async function _getMsgCountSinceLastSummary(userId) {
   if (!supabase) return 0;
@@ -162,6 +194,7 @@ async function _generateAndStore(userId, displayName, anthropicClient, memorySto
 ${conversationText}`;
 
   let summary = '';
+  let summarySource = 'haiku';   // 標記是 Haiku 還是 Gemini fallback 寫的
   try {
     const res = await anthropicClient.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -169,6 +202,7 @@ ${conversationText}`;
       messages: [{ role: 'user', content: summaryPrompt }],
     });
     summary = res.content[0].text.trim();
+    _stats.anthropicSuccess++;
   } catch (err) {
     // err.message 對 Anthropic SDK 來說常常是 "400 {...JSON...}"，先解一層
     const status = err && (err.status || err.statusCode);
@@ -181,33 +215,54 @@ ${conversationText}`;
         if (j && j.error && j.error.message) parsedMsg = j.error.message;
       }
     } catch (_) { /* keep rawMsg */ }
-    console.error(`摘要 AI 呼叫失敗 [status=${status || 'n/a'}]：${parsedMsg}`);
+    console.error(`摘要 Anthropic 呼叫失敗 [status=${status || 'n/a'}]：${parsedMsg}`);
+    _stats.anthropicFail++;
+    _stats.lastAnthropicError = {
+      at: new Date().toISOString(),
+      status: status || null,
+      message: parsedMsg.slice(0, 300),
+    };
 
-    // 錯誤寫入 Supabase，方便診斷
-    // 注意：supabase-js v2 的 .insert() 回傳的是 PostgrestFilterBuilder（thenable），
-    //      它沒有 .catch() 方法。一定要用 try/catch 包，不能 .catch(() => {})。
-    //      之前用 .catch(() => {}) 會丟 "TypeError: ... .catch is not a function"，
-    //      worker retry 3 次都跑這條，把真正的 Anthropic 錯誤蓋掉。
-    if (supabase) {
+    // ── Gemini fallback：Anthropic 失敗時撐住 CRM 摘要鏈 ──
+    if (_genAI) {
       try {
-        await supabase.from('interaction_logs').insert({
-          client_id:    `line_${userId}`,
-          user_id:      userId,
-          display_name: displayName || '',
-          type:         '❌ ERROR',
-          content:      `AI 呼叫失敗 [${status || 'n/a'}]：${parsedMsg}`.slice(0, 1000),
-        });
-      } catch (logErr) {
-        console.error('寫入 ❌ ERROR log 也失敗：', logErr && logErr.message);
+        summary = await _summarizeWithGemini(summaryPrompt);
+        if (summary) {
+          summarySource = 'gemini';
+          _stats.geminiFallbackSuccess++;
+          console.log(`[CRM] Anthropic 失敗 → Gemini fallback 寫摘要成功 → ${displayName || userId}`);
+        }
+      } catch (gErr) {
+        _stats.geminiFallbackFail++;
+        _stats.lastGeminiError = {
+          at: new Date().toISOString(),
+          message: (gErr && gErr.message || String(gErr)).slice(0, 300),
+        };
+        console.error('Gemini fallback 也失敗：', gErr && gErr.message);
       }
     }
 
-    // 4xx → 通常是餘額 / auth / model 名稱問題，retry 也沒用
-    //        return 讓 worker markDone（不堆 queue），下次新訊息進來會重新 enqueue
-    // 5xx / 無 status / timeout → throw 讓 worker retry
-    const isPermanent = status && status >= 400 && status < 500;
-    if (isPermanent) return;
-    throw new Error(`anthropic_transient status=${status || 'n/a'}: ${parsedMsg}`);
+    // 兩條都失敗才寫 ❌ ERROR log + 決定 retry 策略
+    if (!summary) {
+      if (supabase) {
+        try {
+          await supabase.from('interaction_logs').insert({
+            client_id:    `line_${userId}`,
+            user_id:      userId,
+            display_name: displayName || '',
+            type:         '❌ ERROR',
+            content:      `AI 雙線失敗 anthropic[${status || 'n/a'}]: ${parsedMsg}`.slice(0, 1000),
+          });
+        } catch (logErr) {
+          console.error('寫入 ❌ ERROR log 也失敗：', logErr && logErr.message);
+        }
+      }
+      // 4xx 是 permanent error → return 不 retry；其他 throw 讓 worker retry
+      const isPermanent = status && status >= 400 && status < 500;
+      if (isPermanent) return;
+      throw new Error(`ai_dual_failed status=${status || 'n/a'}: ${parsedMsg}`);
+    }
+    // Gemini fallback 成功 → 繼續往下走，跟正常流程一樣寫進 interaction_logs
   }
 
   // 比對 CRM 客戶（取得 lead 物件 + client_id）
@@ -372,4 +427,4 @@ async function forceSummary(userId, displayName, _passedClient, memoryStore) {
   await _generateAndStore(userId, displayName, client, memoryStore);
 }
 
-module.exports = { trackAndMaybeSummarize, forceSummary };
+module.exports = { trackAndMaybeSummarize, forceSummary, getStats };

@@ -2,6 +2,29 @@
 const supabase = require('./supabaseClient');
 const { buildFlexByTriggerType } = require('./flexBuilder');
 
+// Gemini fallback client — Anthropic 失敗時撐住主動關心訊息
+let _genAI = null;
+try {
+  if (process.env.GEMINI_API_KEY) {
+    const { GoogleGenerativeAI } = require('@google/generative-ai');
+    _genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    console.log('[proactivePush] Gemini fallback client 初始化成功');
+  }
+} catch (e) {
+  console.error('[proactivePush] Gemini 初始化失敗：', e.message);
+}
+
+// 模組層計數器：給健康 endpoint 用
+const _stats = {
+  startedAt: new Date().toISOString(),
+  anthropicSuccess: 0,
+  anthropicFail: 0,
+  geminiFallbackSuccess: 0,
+  geminiFallbackFail: 0,
+  lastAnthropicError: null,
+};
+function getStats() { return { ..._stats }; }
+
 // ──────────────────────────────────────────────
 // 觸發類型對應的延遲天數與訊息生成提示
 // ──────────────────────────────────────────────
@@ -161,22 +184,49 @@ async function _generateMessage(trigger, anthropicClient, personaInstruction) {
     ? `[系統指令] 請以小平身份主動發出一則訊息：${config.prompt}`
     : `[系統指令] 請以小平身份主動關心客戶（情境：${trigger.context}），語氣溫暖，不超過80字。`;
 
+  // 先試 Anthropic Haiku（主路徑）
   if (anthropicClient) {
     try {
-      // 主動關心訊息 80 字以內，Haiku 4.5 完全足夠 — 之前用 Opus 4.5
-      // 是大材小用且吃 token 凶（Opus 比 Haiku 貴約 15 倍）
       const response = await anthropicClient.messages.create({
         model: 'claude-haiku-4-5',
         max_tokens: 300,
         system: personaInstruction,
         messages: [{ role: 'user', content: prompt }],
       });
+      _stats.anthropicSuccess++;
       return response.content[0].text.trim();
     } catch (e) {
-      console.error('主動訊息生成失敗：', e.message);
+      console.error('proactivePush Anthropic 失敗：', e && e.message);
+      _stats.anthropicFail++;
+      _stats.lastAnthropicError = {
+        at: new Date().toISOString(),
+        message: ((e && e.message) || String(e)).slice(0, 300),
+      };
     }
   }
+
+  // Anthropic 失敗 → Gemini Flash fallback
+  if (_genAI) {
+    try {
+      const model = _genAI.getGenerativeModel({
+        model: 'models/gemini-2.5-flash',
+        systemInstruction: personaInstruction,
+      });
+      const result = await model.generateContent(prompt);
+      const text = result?.response?.text()?.trim();
+      if (text) {
+        _stats.geminiFallbackSuccess++;
+        console.log('[proactivePush] Anthropic 失敗 → Gemini fallback 寫主動訊息成功');
+        return text;
+      }
+    } catch (gErr) {
+      _stats.geminiFallbackFail++;
+      console.error('proactivePush Gemini fallback 也失敗：', gErr && gErr.message);
+    }
+  }
+
+  // 兩條都掛 → 還有預設訊息至少不會卡死
   return '嗨！小平這邊主動關心一下，最近一切都好嗎？有任何問題隨時找我喔！🤝';
 }
 
-module.exports = { detectAndStoreTrigger, checkSeasonalTriggers, sendPendingMessages, getAllActiveUserIds };
+module.exports = { detectAndStoreTrigger, checkSeasonalTriggers, sendPendingMessages, getAllActiveUserIds, getStats };

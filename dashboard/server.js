@@ -2184,6 +2184,93 @@ app.get('/api/scheduled-broadcasts/preview', requireAdmin, (req, res) => {
   }
 });
 
+// ──────────────────────────────────────────────
+//  AI Stack 健康監控
+//  避免 4/23 那種「Anthropic 餘額耗盡 → CRM 摘要鏈靜默壞 5 天」事故
+// ──────────────────────────────────────────────
+// GET /api/health/ai-stack — 從 Supabase 拉硬資料推斷 AI 鏈健康狀況
+//   pending_summaries: queue 健康
+//   interaction_logs: 最近 24h 摘要寫入 vs 錯誤比例 vs 新聯絡人
+app.get('/api/health/ai-stack', requireAdmin, async (req, res) => {
+  if (!supabase) return res.status(503).json({ ok: false, error: 'supabase-unavailable' });
+  try {
+    const now = new Date();
+    const since24h = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
+    const since1h  = new Date(now.getTime() - 1 * 3600 * 1000).toISOString();
+
+    // 1) pending_summaries 各 status 計數
+    const { data: psRows } = await supabase
+      .from('pending_summaries')
+      .select('status');
+    const psCount = { pending: 0, processing: 0, failed: 0 };
+    for (const r of (psRows || [])) {
+      if (r.status in psCount) psCount[r.status]++;
+    }
+
+    // 2) interaction_logs 近 24h 各 type 計數
+    const { data: logRows } = await supabase
+      .from('interaction_logs')
+      .select('type, content, created_at')
+      .gte('created_at', since24h)
+      .order('created_at', { ascending: false });
+    const last24 = { line: 0, contact: 0, error: 0, errorLast: null };
+    let last1hLine = 0, last1hError = 0;
+    for (const r of (logRows || [])) {
+      if (r.type === '💬 LINE') {
+        last24.line++;
+        if (r.created_at >= since1h) last1hLine++;
+      } else if (r.type === '👤 新聯絡人') {
+        last24.contact++;
+      } else if (r.type === '❌ ERROR') {
+        last24.error++;
+        if (r.created_at >= since1h) last1hError++;
+        if (!last24.errorLast) {
+          last24.errorLast = { at: r.created_at, message: String(r.content || '').slice(0, 300) };
+        }
+      }
+    }
+
+    // 3) 警告判斷
+    const warnings = [];
+    if (psCount.failed > 0) {
+      warnings.push(`pending_summaries 有 ${psCount.failed} 筆 failed — worker 卡住或 AI 雙線都失敗，建議去 SQL 看 last_error`);
+    }
+    if (psCount.processing > 5) {
+      warnings.push(`pending_summaries 有 ${psCount.processing} 筆 processing — worker 可能 hang 住`);
+    }
+    if (last24.error > 0 && last24.line === 0) {
+      warnings.push(`24 小時內有 ${last24.error} 筆 ❌ ERROR 但 0 筆 💬 LINE — 摘要鏈疑似全斷`);
+    }
+    if (last24.error > 5 && last24.line > 0) {
+      warnings.push(`24 小時內 ❌ ERROR ${last24.error} 筆但仍有 ${last24.line} 筆 💬 LINE — fallback 應該在跑（可能 Anthropic 失敗 Gemini 接手）`);
+    }
+    if (last24.contact > 0 && last24.line === 0 && last24.error === 0) {
+      warnings.push(`24 小時內有 ${last24.contact} 位新聯絡人但 0 筆 💬 LINE 摘要 — 可能客戶量小未達 SUMMARY_THRESHOLD=3，或者…再觀察`);
+    }
+
+    const ok = warnings.length === 0;
+    res.json({
+      ok,
+      generatedAt: now.toISOString(),
+      pendingSummaries: psCount,
+      last24h: {
+        summaries:   last24.line,
+        newContacts: last24.contact,
+        errors:      last24.error,
+        errorLast:   last24.errorLast,
+      },
+      last1h: {
+        summaries: last1hLine,
+        errors:    last1hError,
+      },
+      warnings,
+    });
+  } catch (err) {
+    console.error('/api/health/ai-stack failed:', err && err.message);
+    res.status(500).json({ ok: false, error: String(err && err.message) });
+  }
+});
+
 const PORT = process.env.DASHBOARD_PORT || 3977;
 // 預設只綁 127.0.0.1（桌面 App 用）。
 // 若需要讓同網段的 iPhone 存取，啟動前 export DASHBOARD_HOST=0.0.0.0
