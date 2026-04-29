@@ -531,6 +531,22 @@ async function handleEvent(event) {
     );
   }
 
+  // ── 保單借款 / 受益人變更 → 轉達健平顧問（不走 PDF）────────
+  const ADVISOR_FORWARD_PATTERNS = [
+    { regex: /我想詢問「(.+?)」的保單借款/,         label: '保單借款諮詢',   icon: '💰' },
+    { regex: /我想變更「(.+?)」的受益人或個人資料/, label: '受益人／資料變更', icon: '👤' },
+  ];
+  for (const { regex, label, icon } of ADVISOR_FORWARD_PATTERNS) {
+    const m = userText.match(regex);
+    if (m) {
+      const policyName = m[1];
+      const displayName = await fetchDisplayName(event?.source);
+      return client.replyMessage(event.replyToken,
+        buildAdvisorForwardFlex(label, icon, policyName, displayName)
+      );
+    }
+  }
+
   // ── 各類保單變更 → 查保險公司 → 送對應 PDF + 預約 ──────────
   const CHANGE_PATTERNS = [
     { regex: /我想申請「(.+?)」理賠/,               type: '理賠' },
@@ -539,14 +555,11 @@ async function handleEvent(event) {
     { regex: /我想申請「(.+?)」變更扣款方式/,        type: '變更扣款方式' },
     { regex: /我想申請「(.+?)」減額繳清/,            type: '減額繳清' },
     { regex: /我想申請「(.+?)」停效或復效/,          type: '停效復效' },
-    { regex: /我想詢問「(.+?)」的保單借款/,          type: '保單借款' },
-    { regex: /我想變更「(.+?)」的受益人或個人資料/,  type: '受益人變更' },
   ];
   for (const { regex, type } of CHANGE_PATTERNS) {
     const m = userText.match(regex);
     if (m) {
       const policyName = m[1];
-      // 查 Supabase 取得此保單的保險公司名稱
       let insurer = '';
       try {
         const policies = await supabasePolicies.getPoliciesByLineUserId(userId);
@@ -953,6 +966,91 @@ function logUserSource(event) {
 
 function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
   return quickReply ? { type: 'text', text, quickReply } : { type: 'text', text };
+}
+
+// ── 轉達健平顧問確認卡（保單借款 / 受益人變更）────────────────
+function buildAdvisorForwardFlex(label, icon, policyName, displayName) {
+  const short = policyName && policyName.length > 16 ? policyName.slice(0, 16) + '…' : (policyName || '');
+  const name  = displayName || '您';
+  const now   = new Date().toLocaleString('zh-TW', {
+    timeZone: 'Asia/Taipei', month: 'numeric', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  });
+  return {
+    type: 'flex',
+    altText: `✅ ${label} 已收到，健平顧問將與您聯繫`,
+    contents: {
+      type: 'bubble',
+      size: 'kilo',
+      styles: {
+        header: { backgroundColor: '#1A3D6E' },
+        footer: { backgroundColor: '#F7F9FC' }
+      },
+      header: {
+        type: 'box', layout: 'vertical', paddingAll: '18px', spacing: 'sm',
+        contents: [
+          {
+            type: 'box', layout: 'horizontal', spacing: 'sm',
+            contents: [
+              { type: 'text', text: icon, size: 'xl', flex: 0 },
+              { type: 'text', text: label, size: 'lg', weight: 'bold', color: '#FFFFFF', flex: 1, wrap: true }
+            ]
+          },
+          { type: 'text', text: '需求已收到 · 顧問將主動聯繫', size: 'xs', color: '#AABBDD', margin: 'sm' }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'md',
+        contents: [
+          {
+            type: 'box', layout: 'vertical', spacing: 'sm',
+            backgroundColor: '#F0F4FA', cornerRadius: '8px', paddingAll: '12px',
+            contents: [
+              {
+                type: 'box', layout: 'horizontal',
+                contents: [
+                  { type: 'text', text: '申請人', size: 'sm', color: '#888888', flex: 2 },
+                  { type: 'text', text: name,      size: 'sm', color: '#222222', flex: 5, weight: 'bold' }
+                ]
+              },
+              {
+                type: 'box', layout: 'horizontal', margin: 'sm',
+                contents: [
+                  { type: 'text', text: '保單',   size: 'sm', color: '#888888', flex: 2 },
+                  { type: 'text', text: short,     size: 'sm', color: '#222222', flex: 5, wrap: true }
+                ]
+              },
+              {
+                type: 'box', layout: 'horizontal', margin: 'sm',
+                contents: [
+                  { type: 'text', text: '項目',   size: 'sm', color: '#888888', flex: 2 },
+                  { type: 'text', text: label,     size: 'sm', color: '#1A3D6E', flex: 5, weight: 'bold' }
+                ]
+              },
+              {
+                type: 'box', layout: 'horizontal', margin: 'sm',
+                contents: [
+                  { type: 'text', text: '時間',   size: 'sm', color: '#888888', flex: 2 },
+                  { type: 'text', text: now,       size: 'sm', color: '#888888', flex: 5 }
+                ]
+              }
+            ]
+          },
+          {
+            type: 'text', size: 'sm', color: '#555555', wrap: true,
+            text: '✅ 健平顧問已收到您的需求，將在最短時間內透過 LINE 與您聯繫，請保持訊息暢通 🙌'
+          }
+        ]
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [{
+          type: 'button', style: 'secondary', height: 'sm',
+          action: { type: 'message', label: '📅 預約諮詢時間', text: `預約辦理：${label}：${policyName}` }
+        }]
+      }
+    }
+  };
 }
 
 // ── 保單詳細資料 Flex（查詢保單內容使用真實 Supabase 資料）────
