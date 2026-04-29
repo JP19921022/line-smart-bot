@@ -92,6 +92,69 @@ ensureAbEventStore();
 
 // ── 對話上下文由 memoryStore（Supabase）統一管理 ─────────────
 
+// ── PDF 申請表靜態服務 ────────────────────────────────────────
+// 把 PDF 放進 ~/line-bot/assets/forms/ 再 git push 就上線
+app.use('/forms', express.static(path.join(__dirname, 'assets', 'forms')));
+
+const BASE_URL = (process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com').replace(/\/$/, '');
+
+// 申請表對照表（filename → 顯示名稱、說明）
+const FORM_CONFIG = {
+  '變更保額':     { label: '保額變更申請書',     file: 'change_sum_assured.pdf',   note: '填妥後請拍照傳給業務員，或攜帶至公司辦理。' },
+  '變更繳別':     { label: '繳費方式變更申請書', file: 'change_payment_mode.pdf',   note: '請確認新繳別的繳費期限與寬限期。' },
+  '變更信用卡':   { label: '信用卡授權書',       file: 'credit_card_auth.pdf',      note: '請備妥新卡卡號後填寫，授權日期請填當天。' },
+  '變更扣款方式': { label: '扣款帳號變更申請書', file: 'change_debit_account.pdf',  note: '請附上新帳號存摺封面影本。' },
+  '減額繳清':     { label: '減額繳清申請書',     file: 'paid_up.pdf',               note: '辦理後保額將按比例調降，不可還原，請審慎評估。' },
+  '停效復效':     { label: '停效/復效申請書',    file: 'lapse_revival.pdf',         note: '復效需補繳欠費保費及利息，請確認金額。' },
+  '保單借款':     { label: '保單借款申請書',     file: 'policy_loan.pdf',           note: '借款金額以保單現金價值的一定比例為限。' },
+  '受益人變更':   { label: '受益人變更申請書',   file: 'beneficiary_change.pdf',    note: '需要要保人及被保險人簽名，請備妥雙方身份證。' },
+  '理賠':         { label: '理賠申請書',         file: 'claim_form.pdf',            note: '請備齊診斷書、收據等相關醫療文件。' },
+};
+
+/** 取得表單 Flex 卡片（有 PDF 就附下載按鈕，否則顯示準備中） */
+function buildFormFlex(type, policyName) {
+  const cfg = FORM_CONFIG[type];
+  if (!cfg) return null;
+  const pdfUrl = `${BASE_URL}/forms/${cfg.file}`;
+  const pdfExists = fs.existsSync(path.join(__dirname, 'assets', 'forms', cfg.file));
+  const short = policyName && policyName.length > 14 ? policyName.slice(0, 14) + '…' : (policyName || '');
+  const titleText = short ? `${short}｜${cfg.label}` : cfg.label;
+  const footerContents = pdfExists
+    ? [{ type: 'button', style: 'primary', color: '#1A3D6E',
+        action: { type: 'uri', label: '📥 下載申請書', uri: pdfUrl } }]
+    : [{ type: 'text', text: '📋 申請書準備中，業務員將直接提供', size: 'sm', color: '#888888', align: 'center', wrap: true }];
+  return {
+    type: 'flex',
+    altText: `📄 ${cfg.label}`,
+    contents: {
+      type: 'bubble',
+      styles: { header: { backgroundColor: '#1A3D6E' }, footer: { backgroundColor: '#F5F5F5' } },
+      header: {
+        type: 'box', layout: 'vertical', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '📄 申請表單', size: 'xs', color: '#AABBDD' },
+          { type: 'text', text: titleText, size: 'md', color: '#FFFFFF', weight: 'bold', wrap: true }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'sm',
+        contents: [
+          { type: 'text', text: '📌 注意事項', size: 'xs', color: '#888888', weight: 'bold' },
+          { type: 'text', text: cfg.note, size: 'sm', color: '#444444', wrap: true }
+        ]
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px', spacing: 'sm',
+        contents: [
+          ...footerContents,
+          { type: 'button', style: 'secondary', height: 'sm',
+            action: { type: 'message', label: '📅 預約辦理時間', text: `預約辦理：${type}${policyName ? '：' + policyName : ''}` } }
+        ]
+      }
+    }
+  };
+}
+
 app.get('/', (req, res) => {
   res.send('LINE Smart Bot is running');
 });
@@ -396,13 +459,111 @@ async function handleEvent(event) {
     return client.replyMessage(event.replyToken, buildPolicyChangeMenu(policyName));
   }
 
-  // 查詢保單內容：帶保單名稱轉給 AI（有 context 不會介紹商品）
+  // 查詢保單內容：從 Supabase 撈真實資料直接顯示
   if (userText.startsWith('查詢保單內容：')) {
-    await showTypingIndicator(event.source);
     const policyName = userText.replace('查詢保單內容：', '').trim();
-    const contextPrompt = `用戶想查詢「${policyName}」這張保單的內容細節，請根據用戶的保單資料直接回答，不要重新介紹商品。如果需要更具體的問題方向，可以簡短詢問用戶想了解哪個部分（保障範圍、帳戶價值、繳費紀錄等）。`;
-    const aiReply = await getAssistantReply(event, contextPrompt);
-    return client.replyMessage(event.replyToken, buildResponseMessage(aiReply));
+    const policies = await supabasePolicies.getPoliciesByLineUserId(userId);
+    const policy = policies.find(p =>
+      (p.policy_name && p.policy_name.includes(policyName)) ||
+      p.policy_number === policyName
+    );
+    if (policy) {
+      return client.replyMessage(event.replyToken, buildPolicyDetailFlex(policy));
+    }
+    if (policies.length > 0) {
+      const names = policies.map(p => `・${p.policy_name || p.policy_number}`).join('\n');
+      return client.replyMessage(event.replyToken,
+        buildResponseMessage(`找到你名下 ${policies.length} 張有效保單：\n${names}\n\n想查哪張詳細內容，請直接輸入保單名稱喔！`)
+      );
+    }
+    return client.replyMessage(event.replyToken,
+      buildResponseMessage('目前查不到你的保單資料，請先完成身份綁定，或聯絡業務員確認。')
+    );
+  }
+
+  // ── 各類保單變更 → 送出對應 PDF 申請表 + 預約 ─────────────
+  const CHANGE_PATTERNS = [
+    { regex: /我想申請「(.+?)」變更保額/,       type: '變更保額' },
+    { regex: /我想申請「(.+?)」變更繳別/,       type: '變更繳別' },
+    { regex: /我想申請「(.+?)」變更扣款方式/,   type: '變更扣款方式' },
+    { regex: /我想申請「(.+?)」減額繳清/,       type: '減額繳清' },
+    { regex: /我想申請「(.+?)」停效或復效/,     type: '停效復效' },
+    { regex: /我想詢問「(.+?)」的保單借款/,     type: '保單借款' },
+    { regex: /我想變更「(.+?)」的受益人或個人資料/, type: '受益人變更' },
+  ];
+  for (const { regex, type } of CHANGE_PATTERNS) {
+    const m = userText.match(regex);
+    if (m) {
+      const policyName = m[1];
+      const formFlex = buildFormFlex(type, policyName);
+      const msgs = [
+        { type: 'text', text: `收到！${type}的申請表已準備好，請下載填寫後傳回給業務員，或選擇預約到府辦理喔 😊` },
+        ...(formFlex ? [formFlex] : [])
+      ];
+      return client.replyMessage(event.replyToken, msgs);
+    }
+  }
+
+  // 信用卡：選完保險公司後 → PDF + 約時間
+  const cardMatch = userText.match(/^我要變更(.+?)信用卡$/);
+  if (cardMatch) {
+    const insurer = cardMatch[1];
+    const formFlex = buildFormFlex('變更信用卡', `${insurer}信用卡`);
+    const msgs = [
+      { type: 'text', text: `好的！${insurer}信用卡變更申請書在這裡，填妥後傳給業務員，也可以預約時間讓業務員到府協助辦理 😊` },
+      ...(formFlex ? [formFlex] : [])
+    ];
+    return client.replyMessage(event.replyToken, msgs);
+  }
+
+  // 預約辦理（從 PDF 卡片下方按鈕觸發）→ 走預約排程流程
+  if (userText.startsWith('預約辦理：')) {
+    const what = userText.replace('預約辦理：', '').trim();
+    const displayName = await fetchDisplayName(event?.source);
+    const prefix = displayName ? `${displayName} ` : '';
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `${prefix}好的！你想預約辦理「${what}」，我來幫你安排時間 📅\n\n請選擇方便的日期：`,
+      quickReply: {
+        items: ['今天', '明天', '後天', '這週末', '下週'].map(d => ({
+          type: 'action',
+          action: { type: 'message', label: d, text: `辦理日期::${what}::${d}` }
+        }))
+      }
+    });
+  }
+
+  // 辦理日期確認 → 選時段
+  const appointMatch = userText.match(/^辦理日期::(.+?)::(.+)$/);
+  if (appointMatch) {
+    const [, what, date] = appointMatch;
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `${date} 沒問題！請選擇時段：`,
+      quickReply: {
+        items: [
+          { label: '上午 09-12', value: '上午 09:00-12:00' },
+          { label: '下午 13-17', value: '下午 13:00-17:00' },
+          { label: '晚上 19-21', value: '晚上 19:00-21:00' },
+        ].map(s => ({
+          type: 'action',
+          action: { type: 'message', label: s.label, text: `辦理時段::${what}::${date}::${s.value}` }
+        }))
+      }
+    });
+  }
+
+  // 辦理時段確認 → 送出摘要
+  const slotMatch = userText.match(/^辦理時段::(.+?)::(.+?)::(.+)$/);
+  if (slotMatch) {
+    const [, what, date, slot] = slotMatch;
+    const displayName = await fetchDisplayName(event?.source);
+    const name = displayName || '您';
+    return client.replyMessage(event.replyToken,
+      buildResponseMessage(
+        `✅ 預約確認！\n\n📋 辦理項目：${what}\n📅 日期：${date}\n⏰ 時段：${slot}\n\n業務員將與 ${name} 確認細節，請保持 LINE 暢通，有問題隨時找我！🙌`
+      )
+    );
   }
 
   // 先攔截版本按鈕，直接回傳 Flex（不要走 AI）
@@ -731,6 +892,92 @@ function logUserSource(event) {
 
 function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
   return quickReply ? { type: 'text', text, quickReply } : { type: 'text', text };
+}
+
+// ── 保單詳細資料 Flex（查詢保單內容使用真實 Supabase 資料）────
+function buildPolicyDetailFlex(p) {
+  const fmt = (v) => v != null && v !== '' ? String(v) : '—';
+  const fmtMoney = (v, unit) => {
+    if (v == null || v === '') return '—';
+    const n = Number(v);
+    const u = unit || '元';
+    return isNaN(n) ? fmt(v) : n.toLocaleString('zh-TW') + ' ' + u;
+  };
+  const fmtDate = (v) => {
+    if (!v) return '—';
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? fmt(v) : `${d.getFullYear() - 1911} 年 ${d.getMonth()+1} 月 ${d.getDate()} 日`;
+  };
+  const freq = { annual: '年繳', semi_annual: '半年繳', quarterly: '季繳', monthly: '月繳' };
+  const deduct = { credit_card: '信用卡', bank: '銀行扣款', cash: '現金' };
+
+  const rows = [
+    ['保險公司', fmt(p.insurance_company)],
+    ['保單號碼', p.policy_number ? '****' + String(p.policy_number).slice(-6) : '—'],
+    ['生效日期', fmtDate(p.effective_date)],
+    ['繳費', `${freq[p.payment_frequency] || fmt(p.payment_frequency)} / ${deduct[p.deduction_method] || fmt(p.deduction_method)}`],
+    ['要保人', fmt(p.owner_name || p.client_name)],
+    ['被保險人', fmt(p.insured_name || p.client_name)],
+    ['主約保費', fmtMoney(p.main_premium, p.currency_text || '元')],
+    ['總保費合計', fmtMoney(
+      (Number(p.main_premium)||0) + (Number(p.lifetime_rider_prem)||0) + (Number(p.term_rider_prem)||0) + (Number(p.waiver_prem)||0),
+      p.currency_text || '元'
+    )],
+    ...(p.account_value != null ? [['帳戶價值', fmtMoney(p.account_value, p.currency_text || '元')]] : []),
+    ...(p.policy_amount ? [['主約保額', fmtMoney(p.policy_amount, p.policy_unit || '元')]] : []),
+  ];
+
+  const coverageItems = [
+    p.medical_coverage   && '醫療',
+    p.accident_coverage  && '意外',
+    p.critical_coverage  && '重大傷病',
+    p.disability_coverage && '失能',
+    p.ltc_coverage       && '長照',
+    p.cancer_coverage    && '癌症',
+  ].filter(Boolean);
+
+  const coverageRow = coverageItems.length > 0
+    ? [{ type: 'box', layout: 'horizontal', margin: 'sm', contents: [
+        { type: 'text', text: '保障範圍', size: 'sm', color: '#888888', flex: 3 },
+        { type: 'text', text: coverageItems.join('、'), size: 'sm', color: '#333333', flex: 5, wrap: true }
+      ]}]
+    : [];
+
+  return {
+    type: 'flex',
+    altText: `📋 ${p.policy_name || p.policy_number} 保單內容`,
+    contents: {
+      type: 'bubble',
+      styles: { header: { backgroundColor: '#1A3D6E' } },
+      header: {
+        type: 'box', layout: 'vertical', paddingAll: '16px',
+        contents: [
+          { type: 'text', text: '📋 保單資料', size: 'xs', color: '#AABBDD' },
+          { type: 'text', text: p.policy_name || p.policy_number || '保單', size: 'md', color: '#FFFFFF', weight: 'bold', wrap: true }
+        ]
+      },
+      body: {
+        type: 'box', layout: 'vertical', paddingAll: '16px', spacing: 'xs',
+        contents: [
+          ...rows.map(([label, value]) => ({
+            type: 'box', layout: 'horizontal', margin: 'sm',
+            contents: [
+              { type: 'text', text: label, size: 'sm', color: '#888888', flex: 3 },
+              { type: 'text', text: value, size: 'sm', color: '#333333', flex: 5, wrap: true }
+            ]
+          })),
+          ...(coverageRow.length ? [{ type: 'separator', margin: 'md' }, ...coverageRow] : [])
+        ]
+      },
+      footer: {
+        type: 'box', layout: 'vertical', paddingAll: '12px',
+        contents: [{
+          type: 'button', style: 'secondary', height: 'sm',
+          action: { type: 'message', label: '🔄 申請保單變更', text: `保單變更：${p.policy_name || p.policy_number}` }
+        }]
+      }
+    }
+  };
 }
 
 // ── 詢問業務員：第一層需求釐清 ───────────────────────────────
