@@ -533,6 +533,7 @@ async function handleEvent(event) {
 
   // ── 各類保單變更 → 查保險公司 → 送對應 PDF + 預約 ──────────
   const CHANGE_PATTERNS = [
+    { regex: /我想申請「(.+?)」理賠/,               type: '理賠' },
     { regex: /我想申請「(.+?)」變更保額/,            type: '變更保額' },
     { regex: /我想申請「(.+?)」變更繳別/,            type: '變更繳別' },
     { regex: /我想申請「(.+?)」變更扣款方式/,        type: '變更扣款方式' },
@@ -1050,7 +1051,7 @@ function buildPolicyNeedsMenu(policyName) {
       items: [
         { type: 'action', action: { type: 'message', label: '📋 查詢保單內容', text: `查詢保單內容：${policyName}` } },
         { type: 'action', action: { type: 'message', label: '🔄 申請保單變更', text: `保單變更：${policyName}` } },
-        { type: 'action', action: { type: 'message', label: '🏥 申請理賠', text: '健平！我申請理賠！' } },
+        { type: 'action', action: { type: 'message', label: '🏥 申請理賠', text: `我想申請「${policyName}」理賠` } },
         { type: 'action', action: { type: 'message', label: '💰 保單借款諮詢', text: `我想詢問「${policyName}」的保單借款` } },
         { type: 'action', action: { type: 'message', label: '👤 受益人/資料變更', text: `我想變更「${policyName}」的受益人或個人資料` } },
         { type: 'action', action: { type: 'message', label: '💬 其他問題', text: `我有關於「${policyName}」的其他問題` } },
