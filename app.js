@@ -93,46 +93,71 @@ ensureAbEventStore();
 // ── 對話上下文由 memoryStore（Supabase）統一管理 ─────────────
 
 // ── PDF 申請表靜態服務 ────────────────────────────────────────
-// 把 PDF 放進 ~/line-bot/assets/forms/ 再 git push 就上線
-app.use('/forms', express.static(path.join(__dirname, 'assets', 'forms')));
+// 桌面 LINE官方PDF → pdf-sync.js 自動同步到 assets/forms/
+// 資料夾結構：assets/forms/{表單類型}/{保險公司}-{表單類型}.pdf
+app.use('/forms', express.static(path.join(__dirname, 'assets', 'forms'), {
+  setHeaders: (res) => { res.setHeader('Content-Disposition', 'inline'); }
+}));
 
 const BASE_URL = (process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com').replace(/\/$/, '');
 
-// 申請表對照表（type → 顯示名稱、檔名、說明）
+/**
+ * 申請表對照表
+ * folder = 桌面「LINE官方PDF」裡的子資料夾名稱（你自己建的）
+ * label  = 申請書中文名稱（也是檔名的後段，格式：{保險公司}-{label}.pdf）
+ */
 const FORM_CONFIG = {
-  '變更保額':     { label: '保額變更申請書',     file: 'change_sum_assured.pdf',   note: '填妥後請拍照傳給業務員，或攜帶至公司辦理。' },
-  '變更繳別':     { label: '繳費方式變更申請書', file: 'change_payment_mode.pdf',   note: '請確認新繳別的繳費期限與寬限期。' },
-  '變更信用卡':   { label: '信用卡授權書',       file: 'credit_card_auth.pdf',      note: '請備妥新卡卡號後填寫，授權日期請填當天。' },
-  '變更扣款方式': { label: '扣款帳號變更申請書', file: 'change_debit_account.pdf',  note: '請附上新帳號存摺封面影本。' },
-  '減額繳清':     { label: '減額繳清申請書',     file: 'paid_up.pdf',               note: '辦理後保額將按比例調降，不可還原，請審慎評估。' },
-  '停效復效':     { label: '停效/復效申請書',    file: 'lapse_revival.pdf',         note: '復效需補繳欠費保費及利息，請確認金額。' },
-  '保單借款':     { label: '保單借款申請書',     file: 'policy_loan.pdf',           note: '借款金額以保單現金價值的一定比例為限。' },
-  '受益人變更':   { label: '受益人變更申請書',   file: 'beneficiary_change.pdf',    note: '需要要保人及被保險人簽名，請備妥雙方身份證。' },
-  '理賠':         { label: '理賠申請書',         file: 'claim_form.pdf',            note: '請備齊診斷書、收據等相關醫療文件。' },
+  '變更保額':     { label: '保額變更申請書',     folder: '保額變更申請書',     note: '填妥後請拍照傳給業務員，或攜帶至公司辦理。' },
+  '變更繳別':     { label: '繳費方式變更申請書', folder: '繳費方式變更申請書', note: '請確認新繳別的繳費期限與寬限期。' },
+  '變更信用卡':   { label: '信用卡授權書',       folder: '信用卡授權書',       note: '請備妥新卡卡號後填寫，授權日期請填當天。' },
+  '變更扣款方式': { label: '扣款帳號變更申請書', folder: '扣款帳號變更申請書', note: '請附上新帳號存摺封面影本。' },
+  '減額繳清':     { label: '減額繳清申請書',     folder: '減額繳清申請書',     note: '辦理後保額將按比例調降，不可還原，請審慎評估。' },
+  '停效復效':     { label: '停效復效申請書',     folder: '停效復效申請書',     note: '復效需補繳欠費保費及利息，請確認金額。' },
+  '保單借款':     { label: '保單借款申請書',     folder: '保單借款申請書',     note: '借款金額以保單現金價值的一定比例為限。' },
+  '受益人變更':   { label: '受益人變更申請書',   folder: '受益人變更申請書',   note: '需要要保人及被保險人簽名，請備妥雙方身份證。' },
+  '理賠':         { label: '理賠申請書',         folder: '理賠申請書',         note: '請備齊診斷書、收據等相關醫療文件。' },
 };
 
 /**
- * 依保險公司 + 表單類型找 PDF 路徑（URL + 本地路徑）
- * 優先順序：{insurer}/{file} → 通用/{file} → {file}（根目錄）
+ * 依保險公司 + 表單類型找 PDF
+ *
+ * 資料夾結構（你的桌面 LINE官方PDF 同步過來後）：
+ *   assets/forms/
+ *   └── 理賠申請書/
+ *       ├── 安達人壽-理賠申請書.pdf
+ *       ├── 富邦人壽-理賠申請書.pdf
+ *       └── ...
+ *
+ * 查找邏輯：
+ *   1. 完全符合：{folder}/{insurer}-{label}.pdf
+ *   2. 模糊符合：{folder}/ 下任何包含 insurer 名稱的 pdf
+ *   3. 找不到 → 回傳 null（顯示「準備中」）
  */
 function resolvePdfPath(type, insurer) {
   const cfg = FORM_CONFIG[type];
   if (!cfg) return null;
-  const formsRoot = path.join(__dirname, 'assets', 'forms');
-  // 清理公司名稱（去除空白、特殊符號），與資料夾名稱對應
-  const safeInsurer = (insurer || '').replace(/[\\/:*?"<>|]/g, '').trim();
-  const candidates = [
-    safeInsurer ? path.join(formsRoot, safeInsurer, cfg.file) : null,
-    path.join(formsRoot, '通用', cfg.file),
-    path.join(formsRoot, cfg.file),
-  ].filter(Boolean);
+  const formsRoot  = path.join(__dirname, 'assets', 'forms');
+  const folderPath = path.join(formsRoot, cfg.folder);
 
-  for (const localPath of candidates) {
-    if (fs.existsSync(localPath)) {
-      const relative = path.relative(formsRoot, localPath).replace(/\\/g, '/');
-      return { localPath, url: `${BASE_URL}/forms/${relative}`, insurer: safeInsurer };
+  if (!fs.existsSync(folderPath)) return null;
+
+  const allPdfs = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.pdf'));
+
+  // 1. 完全符合檔名
+  const exactName = `${insurer}-${cfg.label}.pdf`;
+  if (allPdfs.includes(exactName)) {
+    const relative = `${cfg.folder}/${exactName}`;
+    return { url: `${BASE_URL}/forms/${encodeURIComponent(cfg.folder)}/${encodeURIComponent(exactName)}`, insurer };
+  }
+
+  // 2. 模糊：檔名包含保險公司名稱
+  if (insurer) {
+    const fuzzy = allPdfs.find(f => f.includes(insurer));
+    if (fuzzy) {
+      return { url: `${BASE_URL}/forms/${encodeURIComponent(cfg.folder)}/${encodeURIComponent(fuzzy)}`, insurer };
     }
   }
+
   return null; // PDF 尚未上傳
 }
 

@@ -10,6 +10,8 @@ const fs   = require('fs');
 const path = require('path');
 const { execSync, exec } = require('child_process');
 
+// 桌面「LINE官方PDF」→ 同步到 assets/forms/
+// 結構：LINE官方PDF/{表單類型}/{保險公司}-{表單類型}.pdf
 const SRC_DIR  = path.join(process.env.HOME, 'Desktop', 'LINE官方PDF');
 const DEST_DIR = path.join(__dirname, 'assets', 'forms');
 const DEBOUNCE_MS = 3000; // 等 3 秒才 push（避免連續改動重複觸發）
