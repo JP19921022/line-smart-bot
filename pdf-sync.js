@@ -23,23 +23,38 @@ if (!fs.existsSync(DEST_DIR)) {
   fs.mkdirSync(DEST_DIR, { recursive: true });
 }
 
-// ── 同步所有 PDF ──────────────────────────────────────────────
+// ── 遞迴收集所有 PDF（含子資料夾）────────────────────────────
+function collectPdfs(dir, base) {
+  const results = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const fullPath = path.join(dir, entry.name);
+    const relPath  = base ? path.join(base, entry.name) : entry.name;
+    if (entry.isDirectory()) {
+      results.push(...collectPdfs(fullPath, relPath));
+    } else if (entry.name.toLowerCase().endsWith('.pdf')) {
+      results.push({ fullPath, relPath });
+    }
+  }
+  return results;
+}
+
+// ── 同步所有 PDF（保留子資料夾結構）─────────────────────────
 function syncAllPdfs() {
-  const files = fs.readdirSync(SRC_DIR).filter(f => f.toLowerCase().endsWith('.pdf'));
-  if (files.length === 0) {
+  const pdfs = collectPdfs(SRC_DIR, '');
+  if (pdfs.length === 0) {
     console.log('[pdf-sync] 📂 桌面資料夾目前沒有 PDF');
     return false;
   }
   let changed = 0;
-  for (const f of files) {
-    const src  = path.join(SRC_DIR,  f);
-    const dest = path.join(DEST_DIR, f);
+  for (const { fullPath: src, relPath } of pdfs) {
+    const dest    = path.join(DEST_DIR, relPath);
+    const destDir = path.dirname(dest);
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
     const srcStat  = fs.statSync(src);
     const destStat = fs.existsSync(dest) ? fs.statSync(dest) : null;
-    // 只有新檔或有異動才複製
     if (!destStat || srcStat.mtimeMs > destStat.mtimeMs) {
       fs.copyFileSync(src, dest);
-      console.log(`[pdf-sync] 📄 已複製：${f}`);
+      console.log(`[pdf-sync] 📄 已複製：${relPath}`);
       changed++;
     }
   }

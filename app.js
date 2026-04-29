@@ -98,7 +98,7 @@ app.use('/forms', express.static(path.join(__dirname, 'assets', 'forms')));
 
 const BASE_URL = (process.env.RENDER_BASE_URL || 'https://line-smart-bot-sg.onrender.com').replace(/\/$/, '');
 
-// 申請表對照表（filename → 顯示名稱、說明）
+// 申請表對照表（type → 顯示名稱、檔名、說明）
 const FORM_CONFIG = {
   '變更保額':     { label: '保額變更申請書',     file: 'change_sum_assured.pdf',   note: '填妥後請拍照傳給業務員，或攜帶至公司辦理。' },
   '變更繳別':     { label: '繳費方式變更申請書', file: 'change_payment_mode.pdf',   note: '請確認新繳別的繳費期限與寬限期。' },
@@ -111,18 +111,43 @@ const FORM_CONFIG = {
   '理賠':         { label: '理賠申請書',         file: 'claim_form.pdf',            note: '請備齊診斷書、收據等相關醫療文件。' },
 };
 
-/** 取得表單 Flex 卡片（有 PDF 就附下載按鈕，否則顯示準備中） */
-function buildFormFlex(type, policyName) {
+/**
+ * 依保險公司 + 表單類型找 PDF 路徑（URL + 本地路徑）
+ * 優先順序：{insurer}/{file} → 通用/{file} → {file}（根目錄）
+ */
+function resolvePdfPath(type, insurer) {
   const cfg = FORM_CONFIG[type];
   if (!cfg) return null;
-  const pdfUrl = `${BASE_URL}/forms/${cfg.file}`;
-  const pdfExists = fs.existsSync(path.join(__dirname, 'assets', 'forms', cfg.file));
+  const formsRoot = path.join(__dirname, 'assets', 'forms');
+  // 清理公司名稱（去除空白、特殊符號），與資料夾名稱對應
+  const safeInsurer = (insurer || '').replace(/[\\/:*?"<>|]/g, '').trim();
+  const candidates = [
+    safeInsurer ? path.join(formsRoot, safeInsurer, cfg.file) : null,
+    path.join(formsRoot, '通用', cfg.file),
+    path.join(formsRoot, cfg.file),
+  ].filter(Boolean);
+
+  for (const localPath of candidates) {
+    if (fs.existsSync(localPath)) {
+      const relative = path.relative(formsRoot, localPath).replace(/\\/g, '/');
+      return { localPath, url: `${BASE_URL}/forms/${relative}`, insurer: safeInsurer };
+    }
+  }
+  return null; // PDF 尚未上傳
+}
+
+/** 取得表單 Flex 卡片（自動對應保險公司，有 PDF 就附下載按鈕） */
+function buildFormFlex(type, policyName, insurer) {
+  const cfg = FORM_CONFIG[type];
+  if (!cfg) return null;
+  const resolved = resolvePdfPath(type, insurer);
   const short = policyName && policyName.length > 14 ? policyName.slice(0, 14) + '…' : (policyName || '');
-  const titleText = short ? `${short}｜${cfg.label}` : cfg.label;
-  const footerContents = pdfExists
+  const companyTag = insurer ? `【${insurer}】` : '';
+  const titleText = short ? `${short}｜${cfg.label}` : `${companyTag}${cfg.label}`;
+  const footerContents = resolved
     ? [{ type: 'button', style: 'primary', color: '#1A3D6E',
-        action: { type: 'uri', label: '📥 下載申請書', uri: pdfUrl } }]
-    : [{ type: 'text', text: '📋 申請書準備中，業務員將直接提供', size: 'sm', color: '#888888', align: 'center', wrap: true }];
+        action: { type: 'uri', label: '📥 下載申請書', uri: resolved.url } }]
+    : [{ type: 'text', text: `📋 ${insurer || ''}申請書準備中，業務員將直接提供`, size: 'sm', color: '#888888', align: 'center', wrap: true }];
   return {
     type: 'flex',
     altText: `📄 ${cfg.label}`,
@@ -481,36 +506,46 @@ async function handleEvent(event) {
     );
   }
 
-  // ── 各類保單變更 → 送出對應 PDF 申請表 + 預約 ─────────────
+  // ── 各類保單變更 → 查保險公司 → 送對應 PDF + 預約 ──────────
   const CHANGE_PATTERNS = [
-    { regex: /我想申請「(.+?)」變更保額/,       type: '變更保額' },
-    { regex: /我想申請「(.+?)」變更繳別/,       type: '變更繳別' },
-    { regex: /我想申請「(.+?)」變更扣款方式/,   type: '變更扣款方式' },
-    { regex: /我想申請「(.+?)」減額繳清/,       type: '減額繳清' },
-    { regex: /我想申請「(.+?)」停效或復效/,     type: '停效復效' },
-    { regex: /我想詢問「(.+?)」的保單借款/,     type: '保單借款' },
-    { regex: /我想變更「(.+?)」的受益人或個人資料/, type: '受益人變更' },
+    { regex: /我想申請「(.+?)」變更保額/,            type: '變更保額' },
+    { regex: /我想申請「(.+?)」變更繳別/,            type: '變更繳別' },
+    { regex: /我想申請「(.+?)」變更扣款方式/,        type: '變更扣款方式' },
+    { regex: /我想申請「(.+?)」減額繳清/,            type: '減額繳清' },
+    { regex: /我想申請「(.+?)」停效或復效/,          type: '停效復效' },
+    { regex: /我想詢問「(.+?)」的保單借款/,          type: '保單借款' },
+    { regex: /我想變更「(.+?)」的受益人或個人資料/,  type: '受益人變更' },
   ];
   for (const { regex, type } of CHANGE_PATTERNS) {
     const m = userText.match(regex);
     if (m) {
       const policyName = m[1];
-      const formFlex = buildFormFlex(type, policyName);
+      // 查 Supabase 取得此保單的保險公司名稱
+      let insurer = '';
+      try {
+        const policies = await supabasePolicies.getPoliciesByLineUserId(userId);
+        const matched = policies.find(p =>
+          (p.policy_name && p.policy_name.includes(policyName)) || p.policy_number === policyName
+        );
+        insurer = matched?.insurance_company || '';
+      } catch (_) {}
+      const formFlex = buildFormFlex(type, policyName, insurer);
+      const companyHint = insurer ? `（${insurer}）` : '';
       const msgs = [
-        { type: 'text', text: `收到！${type}的申請表已準備好，請下載填寫後傳回給業務員，或選擇預約到府辦理喔 😊` },
+        { type: 'text', text: `收到！${companyHint}${type}的申請表已準備好，請下載填寫後傳回給業務員，或選擇預約到府辦理喔 😊` },
         ...(formFlex ? [formFlex] : [])
       ];
       return client.replyMessage(event.replyToken, msgs);
     }
   }
 
-  // 信用卡：選完保險公司後 → PDF + 約時間
+  // 信用卡：選完保險公司後 → 從選項文字已知保險公司，直接找 PDF
   const cardMatch = userText.match(/^我要變更(.+?)信用卡$/);
   if (cardMatch) {
-    const insurer = cardMatch[1];
-    const formFlex = buildFormFlex('變更信用卡', `${insurer}信用卡`);
+    const insurer = cardMatch[1]; // 這裡的 insurer 是 INSURER_OPTIONS 的公司名
+    const formFlex = buildFormFlex('變更信用卡', null, insurer);
     const msgs = [
-      { type: 'text', text: `好的！${insurer}信用卡變更申請書在這裡，填妥後傳給業務員，也可以預約時間讓業務員到府協助辦理 😊` },
+      { type: 'text', text: `好的！${insurer}的信用卡授權書在這裡，填妥後傳給業務員，也可以預約時間讓業務員到府協助辦理 😊` },
       ...(formFlex ? [formFlex] : [])
     ];
     return client.replyMessage(event.replyToken, msgs);
