@@ -5,6 +5,7 @@
  */
 
 const sb = require('./supabaseClient');
+const { hashIdNumber, verifyIdNumber } = require('./idHashUtils');
 
 // ── customer_profiles 查詢 ─────────────────────────────────────
 
@@ -40,14 +41,15 @@ async function getProfileById(profileId) {
 
 /**
  * 模糊搜尋客戶姓名（ILIKE）
- * 回傳 Array of { id, client_name, client_id_number }
+ * 回傳 Array of { id, client_name }
+ * ⚠️ 不再回傳 client_id_number（已改為 hash，無法顯示）
  */
 async function searchProfilesByName(name) {
   if (!sb || !name) return [];
   const keyword = name.trim();
   const { data, error } = await sb
     .from('customer_profiles')
-    .select('id, client_name, client_id_number')
+    .select('id, client_name')
     .ilike('client_name', `%${keyword}%`)
     .is('line_user_id', null)  // 只找未綁定的
     .limit(5);
@@ -160,12 +162,12 @@ async function getPremiumSummaryByLineUserId(lineUserId) {
 
 /**
  * 驗證手機號碼 + 身分證字號是否與 profileId 對應的客戶資料吻合
- * 手機比對保單 raw_data.owner_phone；身分證比對 customer_profiles.client_id_number
+ * 手機比對保單 raw_data.owner_phone；身分證比對 hash（HMAC-SHA256）
  */
 async function verifyIdentity(profileId, phone, idNumber) {
   if (!sb || !profileId) return false;
 
-  // 1. 取 profile 的身分證字號 + 姓名
+  // 1. 取 profile 的身分證 hash + 姓名
   const { data: profile, error: pe } = await sb
     .from('customer_profiles')
     .select('client_id_number, client_name')
@@ -174,10 +176,23 @@ async function verifyIdentity(profileId, phone, idNumber) {
 
   if (pe || !profile) return false;
 
-  // 比對身分證字號（不分大小寫、去除空白）
-  const cleanIdInput = (idNumber || '').trim().toUpperCase();
-  const cleanIdDb    = (profile.client_id_number || '').trim().toUpperCase();
-  if (!cleanIdInput || cleanIdInput !== cleanIdDb) return false;
+  // 比對身分證（hash 比對，防止明文外洩）
+  const storedHash = profile.client_id_number || '';
+  if (!storedHash) return false;
+
+  // 判斷儲存的是 hash 還是明文（hash 固定 64 字元 hex）
+  const isHashed = /^[0-9a-f]{64}$/.test(storedHash);
+  let idMatch = false;
+  if (isHashed) {
+    // 新版：hash 比對
+    idMatch = verifyIdNumber(idNumber, storedHash);
+  } else {
+    // 舊版明文相容（遷移期間過渡用，遷移完成後可移除）
+    const cleanIdInput = (idNumber || '').trim().toUpperCase();
+    const cleanIdDb    = storedHash.trim().toUpperCase();
+    idMatch = cleanIdInput.length > 0 && cleanIdInput === cleanIdDb;
+  }
+  if (!idMatch) return false;
 
   // 2. 比對手機號碼（從保單 raw_data.owner_phone）
   const cleanPhone = (phone || '').trim().replace(/[-\s]/g, '');

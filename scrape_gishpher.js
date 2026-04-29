@@ -19,6 +19,7 @@ const { v5: uuidv5 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
+const { hashIdNumber } = require('./idHashUtils');
 
 // ── 設定 ──────────────────────────────────────────────────────
 const BASE_URL    = 'https://gishpher.ice.com.tw';
@@ -47,10 +48,9 @@ function parseROCDate(str) {
 // ── 保單狀況轉數字 ────────────────────────────────────────────
 function parseStatus(statusText) {
   const s = (statusText || '').trim();
-  if (s === '有效')   return 1;
-  if (s === '照單中') return 1; // 受理中，視為有效
-  if (s === '失效' || s === '停效') return 0;
-  return 1; // 預設有效
+  // 只有「有效」相關狀態才顯示，其餘全部標記為停效（0）
+  if (s === '有效' || s === '照單中' || s === '墊繳') return 1;
+  return 0; // 拒保、照會逾期取消、停效、失效、撤銷、未體檢、繳清、解約、照會中 等全部過濾
 }
 
 // ── 繳別轉頻率代碼 ────────────────────────────────────────────
@@ -67,14 +67,18 @@ function parseFreq(freqText) {
 // ── 扣款方式轉代碼（smallint）────────────────────────────────
 function parseDeductionMethod(str) {
   const s = (str || '').trim();
-  if (s === '轉帳' || s === '銀行轉帳') return 1;
+  if (s === '轉帳' || s === '銀行轉帳' || s === '自動扣款') return 1;
   if (s === '信用卡') return 2;
-  if (s === '支票') return 3;
-  if (s === 'ATM') return 4;
-  if (s === '現金') return 5;
-  if (s === '自動扣款') return 1;
-  if (!s || s === '-') return null;
-  return null; // 未知的不寫入，避免型別錯誤
+  return null; // 其餘不寫入，避免違反 CHECK BETWEEN 0 AND 2
+}
+
+// ── 繳費年期轉數字（終身→99，N年→N）─────────────────────────
+function parsePaymentYears(termStr) {
+  if (!termStr) return null;
+  const s = termStr.trim();
+  if (s === '終身') return 99;
+  const m = s.match(/^(\d+)/);
+  return m ? parseFloat(m[1]) : null;
 }
 
 // ── 金額解析 ─────────────────────────────────────────────────
@@ -132,17 +136,29 @@ function inferPolicyType(policyName) {
 
 // ── 建立 Supabase 行 ──────────────────────────────────────────
 function buildRow(raw) {
-  const uuid = uuidv5(`${raw.insurance_company}|${raw.policy_number}`, NS);
+  const company = (raw.insurance_company || '').trim();
+  const uuid = uuidv5(`${company}|${raw.policy_number}`, NS);
   const coverage = buildCoverageArrays(raw.policy_name, raw.rider_lines);
+
+  // 從 detail 取得的商品資料
+  const products = raw.all_products || [];
+  const mainProdIdx = products.findIndex(p => p.is_main);
+  const mainProd = mainProdIdx >= 0 ? products[mainProdIdx] : products[0];
+
+  // 保額：優先用 detail 解析的 main_insured_amount
+  const policyAmt = parseAmount(raw.main_insured_amount);
+  // 總保費：優先用 detail 的 total_premium，否則用主表格的 main_premium
+  const totalPrem = parseAmount(raw.total_premium) || parseAmount(raw.main_premium);
+
   return {
     fintechgo_uuid:       uuid,
     policy_type:          inferPolicyType(raw.policy_name),
     client_name:          raw.owner_name,
-    client_id_number:     raw.owner_id,
+    client_id_number:     hashIdNumber(raw.owner_id) || raw.owner_id, // HMAC-SHA256 hash，明文不進 DB
     policy_number:        raw.policy_number,
     policy_name:          raw.policy_name || null,
     policy_status:        parseStatus(raw.policy_status),
-    insurance_company:    raw.insurance_company,
+    insurance_company:    company,
     owner_name:           raw.owner_name,
     owner_id_number:      raw.owner_id,
     insured_name:         raw.insured_name,
@@ -151,12 +167,30 @@ function buildRow(raw) {
     receipt_date:         parseROCDate(raw.receipt_date),
     application_date:     parseROCDate(raw.application_date),
     currency:             1,
-    main_premium:         parseAmount(raw.main_premium),
+    main_premium:         totalPrem,
     payment_frequency:    parseFreq(raw.payment_freq),
     deduction_method:     parseDeductionMethod(raw.payment_method),
     term_rider_prem:      parseAmount(raw.rider_premium),
+    policy_amount:        policyAmt,
+    policy_unit:          raw.main_insured_amount_unit || (mainProd?.insured_amount_unit) || null,
+    payment_years:        parsePaymentYears(raw.main_product_term || mainProd?.term),
     ...coverage,
     account_value:        {},
+    raw_data: {
+      owner_dob:             raw.owner_dob     || null,
+      owner_phone:           raw.owner_phone   || null,
+      owner_address:         raw.owner_address || null,
+      insured_dob:           raw.insured_dob   || null,
+      insured_phone:         raw.insured_phone || null,
+      insured_address:       raw.insured_address || null,
+      total_premium:         raw.total_premium  || null,
+      payment_freq_text:     raw.payment_freq   || null,
+      payment_method_text:   raw.payment_method || null,
+      main_product_code:     raw.main_product_code  || mainProd?.product_code  || null,
+      main_product_term:     raw.main_product_term  || mainProd?.term           || null,
+      main_original_premium: raw.main_original_premium || mainProd?.original_premium || null,
+      products,
+    },
   };
 }
 
@@ -362,23 +396,38 @@ async function main() {
       const policyNumber = texts[2 + offset] || '';
 
       const row = {
-        application_date:  texts[0 + offset] || '',
-        insurance_company: texts[1 + offset] || '',
-        policy_number:     policyNumber,
-        owner_name:        texts[3 + offset] || '',
-        owner_id:          texts[4 + offset] || '',
-        insured_name:      texts[5 + offset] || '',
-        insured_id:        texts[6 + offset] || '',
-        policy_status:     texts[7 + offset] || '',
-        effective_date:    texts[8 + offset] || '',
-        issue_date:        texts[9 + offset] || '',
-        receipt_date:      texts[10 + offset] || '',
-        payment_freq:      texts[11 + offset] || '',
-        payment_method:    texts[12 + offset] || '',
-        main_premium:      texts[13 + offset] || '',
-        rider_premium:     texts[14 + offset] || '',
-        policy_name:       null,
-        rider_lines:       [],
+        application_date:         texts[0 + offset] || '',
+        insurance_company:        texts[1 + offset] || '',
+        policy_number:            policyNumber,
+        owner_name:               texts[3 + offset] || '',
+        owner_id:                 texts[4 + offset] || '',
+        insured_name:             texts[5 + offset] || '',
+        insured_id:               texts[6 + offset] || '',
+        policy_status:            texts[7 + offset] || '',
+        effective_date:           texts[8 + offset] || '',
+        issue_date:               texts[9 + offset] || '',
+        receipt_date:             texts[10 + offset] || '',
+        payment_freq:             texts[11 + offset] || '',
+        payment_method:           texts[12 + offset] || '',
+        main_premium:             texts[13 + offset] || '',
+        rider_premium:            texts[14 + offset] || '',
+        // 商品詳細（從 detail view 解析）
+        policy_name:              null,
+        rider_lines:              [],
+        all_products:             [],
+        main_product_code:        null,
+        main_product_term:        null,
+        main_insured_amount:      null,
+        main_insured_amount_unit: null,
+        main_original_premium:    null,
+        total_premium:            null,
+        // 要被保人聯絡資料
+        owner_dob:                null,
+        owner_phone:              null,
+        owner_address:            null,
+        insured_dob:              null,
+        insured_phone:            null,
+        insured_address:          null,
       };
 
       if (!NO_EXPAND && hasExpandBtn && policyNumber) {
@@ -401,44 +450,191 @@ async function main() {
         // 等 Blazor 渲染 detail row（~500–700ms）
         await page.waitForTimeout(650);
 
-        // 取該列下方的 detail cell 文字
-        const detailText = await page.evaluate((polNum) => {
-          const trs = [...document.querySelectorAll('table tbody tr')]
+        // ── 結構化抽取 detail 資料（DOM tables + innerText fallback）──
+        const detailData = await page.evaluate((polNum) => {
+          const allMainTrs = [...document.querySelectorAll('table tbody tr')]
             .filter(tr => !tr.closest('td.dxbl-grid-detail-cell'));
-          for (let i = 0; i < trs.length; i++) {
-            const tds = [...trs[i].querySelectorAll('td')];
+
+          let detailCell = null;
+          for (let i = 0; i < allMainTrs.length; i++) {
+            const tds = [...allMainTrs[i].querySelectorAll('td')];
             if (tds.length < 5) continue;
             const texts = tds.map(td => td.innerText.trim());
             const off = !!tds[0]?.querySelector('button') ? 1 : 0;
             if (texts[2 + off] !== polNum) continue;
-            const next = trs[i + 1];
-            const cell = next?.querySelector('td.dxbl-grid-detail-cell, td[aria-label="Cell with details"]');
-            return cell?.innerText || null;
+            const next = allMainTrs[i + 1];
+            detailCell = next?.querySelector('td.dxbl-grid-detail-cell, td[aria-label="Cell with details"]');
+            break;
           }
-          return null;
+          if (!detailCell) return null;
+
+          const result = {
+            products: [],
+            owner_dob: null, owner_phone: null, owner_address: null,
+            insured_dob: null, insured_phone: null, insured_address: null,
+            total_premium: null,
+          };
+
+          const getCellText = (row, idx) => {
+            if (idx < 0) return '';
+            const cells = [...row.querySelectorAll('td')];
+            return cells[idx]?.innerText?.trim() || '';
+          };
+          const findCol = (headers, names) =>
+            headers.findIndex(h => names.some(n => h.includes(n)));
+
+          // ── Strategy 1: Parse <table> elements ─────────────────
+          const tables = [...detailCell.querySelectorAll('table')];
+          for (const tbl of tables) {
+            const theadTr = tbl.querySelector('thead tr');
+            const headerTr = theadTr || tbl.querySelector('tr');
+            if (!headerTr) continue;
+            const headers = [...headerTr.querySelectorAll('th, td')].map(c => c.innerText.trim());
+            const bodyRows = theadTr
+              ? [...tbl.querySelectorAll('tbody tr')]
+              : [...tbl.querySelectorAll('tr')].slice(1);
+            if (!bodyRows.length) continue;
+
+            // 要被保人資料 table
+            if (headers.some(h => h.includes('身分證') || h.includes('行動電話') || h.includes('聯絡地址'))) {
+              const dobI   = findCol(headers, ['出生日期', '生日']);
+              const phoneI = findCol(headers, ['行動電話', '電話', '手機']);
+              const addrI  = findCol(headers, ['聯絡地址', '地址']);
+              if (bodyRows[0]) {
+                if (dobI   >= 0) result.owner_dob     = getCellText(bodyRows[0], dobI)   || null;
+                if (phoneI >= 0) result.owner_phone   = getCellText(bodyRows[0], phoneI) || null;
+                if (addrI  >= 0) result.owner_address = getCellText(bodyRows[0], addrI)  || null;
+              }
+              if (bodyRows[1]) {
+                if (dobI   >= 0) result.insured_dob     = getCellText(bodyRows[1], dobI)   || null;
+                if (phoneI >= 0) result.insured_phone   = getCellText(bodyRows[1], phoneI) || null;
+                if (addrI  >= 0) result.insured_address = getCellText(bodyRows[1], addrI)  || null;
+              }
+            }
+
+            // 投保商品 table
+            if (headers.some(h => h.includes('商品代號') || h.includes('商品名稱'))) {
+              const isMainI   = findCol(headers, ['主約']);
+              const codeI     = findCol(headers, ['商品代號']);
+              const nameI     = findCol(headers, ['商品名稱']);
+              const termI     = findCol(headers, ['年期']);
+              const amtI      = findCol(headers, ['保額']);
+              const amtUnitI  = findCol(headers, ['保額單位', '單位']);
+              const origPremI = findCol(headers, ['原始保費']);
+              const currI     = findCol(headers, ['幣別']);
+
+              for (const row of bodyRows) {
+                const code = codeI >= 0 ? getCellText(row, codeI) : '';
+                if (!code || !/^[A-Z]/.test(code)) continue;
+                let isMain = false;
+                if (isMainI >= 0) {
+                  const mainTd = [...row.querySelectorAll('td')][isMainI];
+                  if (mainTd) {
+                    const cb = mainTd.querySelector('input[type="checkbox"]');
+                    isMain = cb ? cb.checked : /☑|✓|✔/.test(mainTd.innerText);
+                  }
+                }
+                result.products.push({
+                  is_main: isMain,
+                  product_code: code,
+                  product_name: nameI >= 0 ? getCellText(row, nameI) : '',
+                  term: termI >= 0 ? getCellText(row, termI) : '',
+                  insured_amount: amtI >= 0 ? getCellText(row, amtI) : '',
+                  insured_amount_unit: amtUnitI >= 0 ? getCellText(row, amtUnitI) : '',
+                  original_premium: origPremI >= 0 ? getCellText(row, origPremI) : '',
+                  currency: currI >= 0 ? getCellText(row, currI) : '',
+                });
+              }
+
+              // 總保費合計 from tfoot
+              const tfoot = tbl.querySelector('tfoot');
+              if (tfoot) {
+                const nums = (tfoot.innerText || '').replace(/\s/g, '').match(/[\d,]+/g);
+                if (nums && nums.length) {
+                  const sorted = nums.map(n => parseInt(n.replace(/,/g, ''))).sort((a, b) => b - a);
+                  result.total_premium = sorted[0].toLocaleString();
+                }
+              }
+            }
+          }
+
+          // ── Strategy 2: innerText fallback ──────────────────────
+          const rawText = detailCell.innerText || '';
+
+          // 若表格解析到商品，跳過 fallback
+          if (result.products.length === 0) {
+            const prodIdx = rawText.indexOf('投保商品');
+            if (prodIdx >= 0) {
+              const prodText = rawText.slice(prodIdx);
+              // 支援年期為「終身」或數字
+              const matches = [...prodText.matchAll(
+                /([A-Z][A-Z0-9]{1,6})\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+(終身|\d{1,3}(?:\s*年)?)\s+([\d,\-]+)\s+([^\s\d,\-]+)\s+([\d,\-]+)/g
+              )];
+              for (let j = 0; j < matches.length; j++) {
+                const m = matches[j];
+                result.products.push({
+                  is_main: j === 0,
+                  product_code: m[1],
+                  product_name: m[2].trim(),
+                  term: m[3].trim(),
+                  insured_amount: m[4],
+                  insured_amount_unit: m[5],
+                  original_premium: m[6],
+                  currency: '',
+                });
+              }
+            }
+            // 總保費合計
+            if (!result.total_premium) {
+              const tm = rawText.match(/總保費合計[^\d]*([\d,]+)/);
+              if (tm) result.total_premium = tm[1];
+            }
+          }
+
+          // 若聯絡資料未從 table 取得，嘗試 innerText 正則
+          if (!result.owner_dob) {
+            const personLines = [...rawText.matchAll(
+              /([A-Z]\d{9})\s+([\u4e00-\u9fff]{1,6})\s+(\d{2,3}\/\d{2}\/\d{2})\s+(09\d{8})\s+(.{5,})/gm
+            )];
+            if (personLines[0]) {
+              const m = personLines[0];
+              result.owner_dob = m[3]; result.owner_phone = m[4]; result.owner_address = m[5].trim();
+            }
+            if (personLines[1]) {
+              const m = personLines[1];
+              result.insured_dob = m[3]; result.insured_phone = m[4]; result.insured_address = m[5].trim();
+            }
+          }
+
+          return result;
         }, policyNumber);
 
-        if (detailText) {
-          const productIdx = detailText.indexOf('投保商品');
-          if (productIdx >= 0) {
-            const productText = detailText.slice(productIdx);
-            // 主約商品名稱：大寫英數商品代號 → 中文名稱 → 年期數字
-            const mainIdx = productText.indexOf('主約');
-            if (mainIdx >= 0) {
-              const nameMatch = productText.slice(mainIdx).match(
-                /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/
-              );
-              if (nameMatch) { row.policy_name = nameMatch[1].trim(); nameCount++; }
-            }
-            // 附約名稱
-            const riderIdx = productText.indexOf('附約');
-            if (riderIdx >= 0) {
-              const riderMatches = [...productText.slice(riderIdx + 2).matchAll(
-                /[A-Z][A-Z0-9]{1,6}\s+([\u4e00-\u9fff（）()A-Za-z\s·－\-]+?)\s+\d{1,3}\s+[\d,\-]/g
-              )];
-              row.rider_lines = riderMatches.map(m => m[1].trim()).filter(Boolean);
-            }
-          }
+        if (detailData && detailData.products.length > 0) {
+          // 找主約（is_main=true 優先，否則第一筆）
+          const mainIdx = detailData.products.findIndex(p => p.is_main);
+          const mainProd = mainIdx >= 0 ? detailData.products[mainIdx] : detailData.products[0];
+          const riderProds = detailData.products.filter((_, idx) =>
+            idx !== (mainIdx >= 0 ? mainIdx : 0)
+          );
+
+          row.policy_name              = mainProd.product_name || null;
+          row.main_product_code        = mainProd.product_code || null;
+          row.main_product_term        = mainProd.term         || null;
+          row.main_insured_amount      = mainProd.insured_amount || null;
+          row.main_insured_amount_unit = mainProd.insured_amount_unit || null;
+          row.main_original_premium    = mainProd.original_premium || null;
+          row.rider_lines              = riderProds.map(p => p.product_name).filter(Boolean);
+          row.all_products             = detailData.products;
+          row.total_premium            = detailData.total_premium || null;
+          nameCount++;
+        }
+        if (detailData) {
+          row.owner_dob      = detailData.owner_dob      || null;
+          row.owner_phone    = detailData.owner_phone    || null;
+          row.owner_address  = detailData.owner_address  || null;
+          row.insured_dob    = detailData.insured_dob    || null;
+          row.insured_phone  = detailData.insured_phone  || null;
+          row.insured_address = detailData.insured_address || null;
         }
       }
 

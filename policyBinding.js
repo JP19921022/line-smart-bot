@@ -330,9 +330,9 @@ function buildConfirmCandidatesFlex(candidates, inputName) {
         { type: 'text', text: c.client_name, size: 'lg', weight: 'bold', align: 'center', color: '#1A1A2E' },
         {
           type: 'text',
-          text: c.client_id_number ? maskId(c.client_id_number) : '（無編號）',
+          text: '（身份驗證保護中）',
           size: 'xxs',
-          color: '#888888',
+          color: '#AAAAAA',
           align: 'center',
         },
       ],
