@@ -143,16 +143,25 @@ function resolvePdfPath(type, insurer) {
 
   const allPdfs = fs.readdirSync(folderPath).filter(f => f.toLowerCase().endsWith('.pdf'));
 
-  // 1. 完全符合檔名
+  // 1. 完全符合檔名（{insurer}-{label}.pdf）
   const exactName = `${insurer}-${cfg.label}.pdf`;
   if (allPdfs.includes(exactName)) {
-    const relative = `${cfg.folder}/${exactName}`;
     return { url: `${BASE_URL}/forms/${encodeURIComponent(cfg.folder)}/${encodeURIComponent(exactName)}`, insurer };
   }
 
-  // 2. 模糊：檔名包含保險公司名稱
+  // 2. 模糊比對：雙向包含
+  //    例：insurer="安達人壽"，檔名前段="安達" → "安達人壽".includes("安達") = true
+  //    例：insurer="安達"，檔名前段="安達人壽" → "安達人壽".includes("安達") = true
   if (insurer) {
-    const fuzzy = allPdfs.find(f => f.includes(insurer));
+    const fuzzy = allPdfs.find(f => {
+      // 取檔名第一個 - 之前的部分作為公司縮寫
+      const fileCompany = f.split('-')[0].trim();
+      return (
+        f.includes(insurer) ||              // 檔名直接包含完整公司名
+        insurer.includes(fileCompany) ||    // 完整名包含檔名縮寫（安達人壽 includes 安達）
+        fileCompany.includes(insurer)       // 反向：檔名縮寫包含輸入名稱
+      );
+    });
     if (fuzzy) {
       return { url: `${BASE_URL}/forms/${encodeURIComponent(cfg.folder)}/${encodeURIComponent(fuzzy)}`, insurer };
     }
