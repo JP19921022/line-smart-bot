@@ -99,11 +99,22 @@ function scheduleGitPush() {
 console.log(`[pdf-sync] 👀 開始監控：${SRC_DIR}`);
 scheduleGitPush();
 
-// ── 監控資料夾 ────────────────────────────────────────────────
-fs.watch(SRC_DIR, { persistent: true }, (eventType, filename) => {
-  if (!filename || !filename.toLowerCase().endsWith('.pdf')) return;
+// ── 遞迴監控（含子資料夾）────────────────────────────────────
+// macOS / Linux 支援 recursive: true
+fs.watch(SRC_DIR, { persistent: true, recursive: true }, (eventType, filename) => {
+  if (!filename) return;
+  // 只處理 PDF 或子資料夾異動
+  const isPdf = filename.toLowerCase().endsWith('.pdf');
+  const isDir = !filename.includes('.');
+  if (!isPdf && !isDir) return;
   console.log(`[pdf-sync] 🔔 偵測到變動：${filename}（${eventType}）`);
   scheduleGitPush();
 });
 
-console.log('[pdf-sync] ✅ 監控中，有 PDF 異動會自動上傳');
+// ── 每 10 分鐘定期補同步（保底機制）─────────────────────────
+setInterval(() => {
+  console.log('[pdf-sync] ⏰ 定期補同步...');
+  scheduleGitPush();
+}, 10 * 60 * 1000);
+
+console.log('[pdf-sync] ✅ 監控中（遞迴），有 PDF 異動會自動上傳');
