@@ -719,7 +719,9 @@ function buildQuickReplyPayload() {
     { label: '專業理財版', text: '專業理財版' },
     { label: '焦點新聞', text: '焦點新聞' },
     { label: '保單健檢', text: '保單健檢' },
-    { label: '主管輔導', text: '主管輔導提點' }
+    { label: '主管輔導', text: '主管輔導提點' },
+    { label: '我的保單', text: '我的保單' },
+    { label: '解綁', text: '解除綁定' }
   ];
   const messageButtons = messageItems.map((item) => ({
     type: 'action',
