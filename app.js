@@ -16,6 +16,32 @@ const approvalQueue = require('./approvalQueue');
 const policyBinding = require('./policyBinding');
 const supabasePolicies = require('./supabasePolicies');
 
+// ── Webhook Rate Limiter（防止惡意大量打擊）────────────────────
+// 每個 IP：60 秒內最多 60 次請求
+const _rlMap = new Map(); // ip → { count, resetAt }
+function webhookRateLimit(req, res, next) {
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const windowMs = 60_000;
+  const maxReq = 60;
+  let entry = _rlMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 1, resetAt: now + windowMs };
+  } else {
+    entry.count++;
+  }
+  _rlMap.set(ip, entry);
+  // 定期清理過期 IP（避免 Map 無限長大）
+  if (_rlMap.size > 5000) {
+    for (const [k, v] of _rlMap) { if (now > v.resetAt) _rlMap.delete(k); }
+  }
+  if (entry.count > maxReq) {
+    console.warn(`[RateLimit] IP ${ip} 超過限制 (${entry.count}/${maxReq})`);
+    return res.status(429).send('Too Many Requests');
+  }
+  next();
+}
+
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
@@ -120,7 +146,7 @@ app.get('/debug/user-ids', (req, res) => {
 });
 
 if (config.channelSecret) {
-  app.post('/webhook', line.middleware(config), async (req, res) => {
+  app.post('/webhook', webhookRateLimit, line.middleware(config), async (req, res) => {
     if (!client) return res.status(503).send('LINE client not configured');
     try {
       await Promise.all(req.body.events.map(handleEvent));
