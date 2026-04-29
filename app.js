@@ -384,6 +384,27 @@ async function handleEvent(event) {
     }
   }
 
+  // ── 詢問業務員 → 需求釐清（不做商品介紹）────────────────────
+  if (userText.startsWith('我想了解保單：')) {
+    const policyName = userText.replace('我想了解保單：', '').trim();
+    return client.replyMessage(event.replyToken, buildPolicyNeedsMenu(policyName));
+  }
+
+  // 保單變更：展開第二層選項
+  if (userText.startsWith('保單變更：')) {
+    const policyName = userText.replace('保單變更：', '').trim();
+    return client.replyMessage(event.replyToken, buildPolicyChangeMenu(policyName));
+  }
+
+  // 查詢保單內容：帶保單名稱轉給 AI（有 context 不會介紹商品）
+  if (userText.startsWith('查詢保單內容：')) {
+    await showTypingIndicator(event.source);
+    const policyName = userText.replace('查詢保單內容：', '').trim();
+    const contextPrompt = `用戶想查詢「${policyName}」這張保單的內容細節，請根據用戶的保單資料直接回答，不要重新介紹商品。如果需要更具體的問題方向，可以簡短詢問用戶想了解哪個部分（保障範圍、帳戶價值、繳費紀錄等）。`;
+    const aiReply = await getAssistantReply(event, contextPrompt);
+    return client.replyMessage(event.replyToken, buildResponseMessage(aiReply));
+  }
+
   // 先攔截版本按鈕，直接回傳 Flex（不要走 AI）
   if (userText === '保戶溫暖版') {
     return client.replyMessage(event.replyToken, buildWarmFlexCarousel());
@@ -710,6 +731,44 @@ function logUserSource(event) {
 
 function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
   return quickReply ? { type: 'text', text, quickReply } : { type: 'text', text };
+}
+
+// ── 詢問業務員：第一層需求釐清 ───────────────────────────────
+function buildPolicyNeedsMenu(policyName) {
+  const short = policyName.length > 14 ? policyName.slice(0, 14) + '…' : policyName;
+  return {
+    type: 'text',
+    text: `收到！請問你對「${short}」有什麼需要協助的呢？😊\n\n請選擇下方選項，我馬上幫你處理！`,
+    quickReply: {
+      items: [
+        { type: 'action', action: { type: 'message', label: '📋 查詢保單內容', text: `查詢保單內容：${policyName}` } },
+        { type: 'action', action: { type: 'message', label: '🔄 申請保單變更', text: `保單變更：${policyName}` } },
+        { type: 'action', action: { type: 'message', label: '🏥 申請理賠', text: '健平！我申請理賠！' } },
+        { type: 'action', action: { type: 'message', label: '💰 保單借款諮詢', text: `我想詢問「${policyName}」的保單借款` } },
+        { type: 'action', action: { type: 'message', label: '👤 受益人/資料變更', text: `我想變更「${policyName}」的受益人或個人資料` } },
+        { type: 'action', action: { type: 'message', label: '💬 其他問題', text: `我有關於「${policyName}」的其他問題` } },
+      ]
+    }
+  };
+}
+
+// ── 詢問業務員：第二層保單變更選項 ──────────────────────────
+function buildPolicyChangeMenu(policyName) {
+  const short = policyName.length > 14 ? policyName.slice(0, 14) + '…' : policyName;
+  return {
+    type: 'text',
+    text: `了解！請問「${short}」你想申請哪項變更？\n\n選好後我會幫你轉達給業務員喔！`,
+    quickReply: {
+      items: [
+        { type: 'action', action: { type: 'message', label: '💵 變更保額', text: `我想申請「${policyName}」變更保額` } },
+        { type: 'action', action: { type: 'message', label: '📅 變更繳別', text: `我想申請「${policyName}」變更繳別` } },
+        { type: 'action', action: { type: 'message', label: '💳 變更信用卡', text: '變更信用卡' } },
+        { type: 'action', action: { type: 'message', label: '🏦 變更扣款方式', text: `我想申請「${policyName}」變更扣款方式` } },
+        { type: 'action', action: { type: 'message', label: '🔒 減額繳清', text: `我想詢問「${policyName}」減額繳清` } },
+        { type: 'action', action: { type: 'message', label: '⏸️ 停效/復效', text: `我想詢問「${policyName}」停效或復效` } },
+      ]
+    }
+  };
 }
 
 function buildQuickReplyPayload() {
