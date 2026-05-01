@@ -51,15 +51,12 @@
     height:52px;
     background:rgba(8,8,14,0.88);
     backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-    border-bottom:1px solid rgba(255,255,255,0.06);
+    border-bottom:1px solid rgba(201,168,76,0.22);
     z-index:200;
     display:flex;align-items:center;
   }
-  .app-header::after{
-    content:'';position:absolute;bottom:0;left:0;right:0;height:1px;
-    background:linear-gradient(90deg,transparent,rgba(201,168,76,0.3),rgba(245,208,122,0.5),rgba(201,168,76,0.3),transparent);
-    pointer-events:none;
-  }
+  /* header bottom shimmer removed — merged into border-bottom to avoid
+     overlapping the KPI strip's top edge */
   .header-inner{
     width:100%;padding:0 20px;
     height:52px;
@@ -98,6 +95,7 @@
     padding:3px 10px;border-radius:4px;
     font-size:11px;font-weight:600;letter-spacing:0.04em;
     font-family:var(--mono);text-transform:uppercase;
+    max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   }
   .header-meta{display:flex;align-items:center;gap:10px;flex:1}
   .field-label{font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap;flex-shrink:0;letter-spacing:0.06em;text-transform:uppercase;font-family:var(--mono);}
@@ -1132,10 +1130,13 @@ function animateNums(){document.querySelectorAll('.num').forEach(el=>{const targ
 let __refreshing=false;
 async function refreshAll(){
   if(__refreshing) return;__refreshing=true;
+  let _authed=false; // once first API call succeeds, don't override status
   try{
     const date=q();
-    document.getElementById('authStatus').innerText='已登入';
+    document.getElementById('authStatus').innerText='連線中…';
     const o=await j(`/api/overview?date=${date}`);
+    _authed=true; // confirmed: token valid, server reachable
+    document.getElementById('authStatus').innerText='已登入';
     document.getElementById('kpiReach').dataset.val=String(o.careSent||0);
     document.getElementById('kpiReplyRate').dataset.val=String(o.replyRate||0);
     document.getElementById('kpiRisk').innerText=(o.taskFailures>0)?`警戒（${o.taskFailures}）`:'穩定';
@@ -1168,7 +1169,10 @@ async function refreshAll(){
     const top=await j(`/api/top-responders?date=${date}`);document.getElementById('topResponders').innerHTML='<tr><th>姓名</th><th>今日互動標記</th><th>最後互動</th></tr>'+top.slice(0,8).map(x=>`<tr><td>${x.name||x.userId}</td><td>${x.activeOnDate?'✅':'—'}</td><td>${fmtTS(x.last_contact_at)}</td></tr>`).join('');
     await Promise.all([loadRules(),loadAb(),loadSchedule(),loadGlobalManual(),loadPresets(),loadSegments(),loadMsgItems()]);
   }catch(e){
-    document.getElementById('authStatus').innerText='連線暫時失敗（保留上一畫面）';
+    if(!_authed){ // only update status if we never confirmed login
+      const isAuth = e?.message==='未授權' || String(e?.message).includes('401');
+      document.getElementById('authStatus').innerText = isAuth ? '尚未登入' : '連線失敗';
+    }
     console.warn('refreshAll failed:', e?.message || e);
   } finally {__refreshing=false;}
 }
