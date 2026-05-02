@@ -46,16 +46,21 @@
      ═══════════════════════════════════ */
 
   /* ── TOP BAR ── */
-  .app-header{
-    position:fixed;top:0;left:252px;right:0;
-    height:52px;
-    background:rgba(8,8,14,0.88);
-    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-    border-bottom:none;
-    box-shadow:0 1px 0 rgba(255,255,255,0.04),0 4px 24px rgba(0,0,0,0.5);
-    z-index:200;
-    display:flex;align-items:center;
+  /* Reset theme.css generic `header` rules that cause wrapping & gold line */
+  header.app-header{
+    position:fixed !important;top:0 !important;left:252px !important;right:0 !important;
+    height:52px !important;
+    background:rgba(8,8,14,0.88) !important;
+    backdrop-filter:blur(20px) !important;-webkit-backdrop-filter:blur(20px) !important;
+    border-bottom:none !important;
+    box-shadow:0 1px 0 rgba(255,255,255,0.04),0 4px 24px rgba(0,0,0,0.5) !important;
+    z-index:200 !important;
+    display:flex !important;align-items:center !important;
+    flex-wrap:nowrap !important;
+    padding:0 !important;
+    overflow:visible !important;
   }
+  header.app-header::after{ display:none !important; }
   /* header bottom shimmer removed — merged into border-bottom to avoid
      overlapping the KPI strip's top edge */
   .header-inner{
