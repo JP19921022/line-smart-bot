@@ -1,7 +1,7 @@
-# 保單卡片設定（黃金版本 v1.0）
+# 保單卡片設定（黃金版本 v2.0）
 
 > 確認日期：2026-04-24
-> 狀態：✅ 已確認正確、用戶滿意，此為還原基準版本
+> 狀態：✅ 全流程測試通過（綁定 / 查詢 / 解除綁定 / 重新驗證），此為還原基準版本
 
 ---
 
@@ -66,12 +66,33 @@ const CARDS_PER_PAGE = 9;
 
 ---
 
-## 解除綁定流程
+## 解除綁定流程（✅ 已測試通過 v2.0）
 
-- **觸發關鍵字**（app.js message handler）：`/取消綁定|解除綁定|解綁|取消帳號/`
-- 呼叫 `policyBinding.startUnbindFlow(userId)` → 紅色確認 Flex
-- 確認按鈕 postback：`policy_unbind:confirm` → 呼叫 `supabasePolicies.unbindLineUser(userId)`
-- 取消按鈕 postback：`policy_unbind:cancel` → 維持綁定
+### 設計原則：Stateless（不依賴 in-memory state）
+Render 每次重部署會清空 bindingState Map，所以解綁流程完全不依賴 state。
+
+### 流程
+1. 用戶輸入「解綁／解除綁定／取消綁定／取消帳號」
+2. app.js regex 攔截 → 呼叫 `policyBinding.startUnbindFlow(userId)` → 回傳紅色確認 Flex
+3. Flex 卡片上「確認解除」按鈕：**message action**，傳送文字「確認解除綁定」
+4. app.js 收到文字「確認解除綁定」→ **精確比對（在 regex 之前）** → 查 Supabase → 清除 line_user_id → 回覆成功訊息
+5. 用戶再輸入「我的保單」→ `getProfileByLineId` 查不到 → 進入驗證流程（姓名輸入）
+
+### app.js 關鍵字攔截順序（⚠️ 順序不能錯）
+```
+1. 查詢我的保單 / 我的保單 / 保單查詢 → startPolicyQuery
+2. 「確認解除綁定」精確比對（===）→ 直接解綁   ← 必須在 regex 之前！
+3. /取消綁定|解除綁定|解綁|取消帳號/ regex → startUnbindFlow（顯示確認卡）
+4. getState(userId) → handleBindingText（進行中的流程）
+5. 各功能按鈕關鍵字
+6. AI 回覆
+```
+
+### ⚠️ 若「確認解除綁定」放在 regex 之後，會無限輪迴出卡片（已修復）
+
+### 按鈕設計
+- 確認解除：`type: 'message', text: '確認解除綁定'`（不用 postback，避免 state 消失問題）
+- 取消：`type: 'message', text: '取消'`
 
 ---
 
@@ -130,3 +151,14 @@ if (data.startsWith('policy_bind:') ||
 | total_premium 永遠 null | fallback 用 main_premium + rider prems 加總 |
 | Supabase URL 錯誤（local pm2 crash） | 正常，local 只跑 dashboard；bot 在 Render |
 | deduction_method 違反 CHECK 約束 | parseDeductionMethod 只回 1/2/null |
+| 解綁無聲無回應（v1 bug）| `unbindLineUser` 漏加到 `supabasePolicies.js` 的 module.exports，導致呼叫時拋 TypeError。已修復（commit 58ce9f1）|
+| 解綁後無限輪迴卡片（v1 bug）| 「確認解除綁定」文字命中 regex `/解除綁定/` 再次觸發卡片。修復：精確比對放在 regex 之前 |
+
+---
+
+## 架構備忘
+
+- **LINE Bot**：跑在 Render.com（cloud），`git push` → 自動部署（1~2 分鐘）
+- **本地 pm2**：只跑 `dashboard/server.js`（管理面板 port 3977），與 LINE bot 無關
+- **in-memory state**（bindingState Map）：Render 重部署會清空 → 解綁流程必須 stateless
+- **supabasePolicies.js 每次新增函式後記得加到 module.exports！**

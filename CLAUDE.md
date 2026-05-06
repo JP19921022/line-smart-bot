@@ -29,3 +29,7 @@
 | gishpher | 保單管理平台（爬蟲來源） |
 
 → 詳細設定：memory/projects/line-bot-policy-card.md
+
+## 健平溝通風格（小平學習庫）
+→ 風格記憶庫：memory/style/健平-溝通風格.md
+→ 使用方式：健平丟出與客戶的真實對話 → 我分析學習點 → 更新記憶庫 → 逐步調整小平的回應語氣
