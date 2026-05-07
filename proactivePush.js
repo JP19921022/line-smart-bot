@@ -131,6 +131,11 @@ async function sendPendingMessages(lineClient, anthropicClient, personaInstructi
       console.log(`✅ 主動訊息已送出 → ${trigger.user_id} [${trigger.trigger_type}]`);
     } catch (err) {
       console.error(`❌ 主動訊息失敗 → ${trigger.user_id}：`, err.message);
+      // 400 = 使用者封鎖 Bot 或 userId 無效，標為已送（避免無限重試）
+      if (err.statusCode === 400 || (err.response && err.response.status === 400)) {
+        await supabase.from('proactive_triggers').update({ sent: true }).eq('id', trigger.id);
+        console.warn(`⚠️ 400 封鎖/無效 → ${trigger.user_id}，已標記為 sent 避免重試`);
+      }
     }
   }
 }
