@@ -689,7 +689,7 @@ async function handleEvent(event) {
     if (held && held.held) {
       return client.replyMessage(
         event.replyToken,
-        buildResponseMessage('您的訊息我們已收到，會由專員儘快親自回覆您，謝謝。')
+        buildResponseMessage('收到了！這件事我想讓健平顧問親自確認，馬上請他幫你跟進，你稍等一下喔 🙏')
       );
     }
   } catch (e) {
@@ -2184,7 +2184,7 @@ const personaInstruction = (() => {
     const cutIdx = styleFull.indexOf(cutMarker);
     const styleCore = cutIdx !== -1 ? styleFull.slice(0, cutIdx).trim() : styleFull;
     console.log('[persona] 已載入健平溝通風格記憶庫（靈魂層＋原則＋詞彙庫＋真實對話範例）');
-    return persona + '\n\n---\n\n# 健平真實溝通風格（從客戶對話中學習，高優先級）\n\n' + styleCore;
+    return persona + '\n\n════════════════\n\n# 健平真實溝通風格（從客戶對話中學習，高優先級）\n\n' + styleCore;
   } catch (e) {
     console.warn('[persona] 找不到溝通風格記憶庫，僅使用 persona.md：', e.message);
     return persona;
@@ -2210,16 +2210,16 @@ async function buildPrompt(userText, event, displayName) {
   const previousMemories = userId ? await memoryStore.getRecentMemories(userId, topicHint, 3) : [];
   const memoryContext = previousMemories.length ? `使用者之前提過：
 ${previousMemories.join('\n')}
----
+
 ` : '';
   const nameHint = displayName ? `使用者 LINE 名稱：${displayName}（稱呼對方時請直接叫「${displayName}」，不要用「大哥/大姐/老闆」等泛稱）\n` : '';
 
   return `${fewShotExamples}
----
+
 ${memoryContext}${nameHint}使用者類型：${sourceInfo}
 可能主題：${topicHint}
 使用者輸入：${userText || '（無內容）'}
-請以上述 personaInstruction 的口吻回覆，必要時先共感再給建議。`;
+請只針對「使用者輸入」這則訊息回覆，不要主動收尾上一輪話題。必要時先共感再給建議。`;
 }
 
 function buildTopicHint(text) {
