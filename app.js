@@ -973,18 +973,18 @@ function logUserSource(event) {
   }
 }
 
-// LINE 不支援 Markdown，AI 輸出送出前一律清理
+// LINE 支援的格式：**粗體** *斜體* `紅字` ~~刪除線~~ ~~~底框
+// LINE 不支援的格式：# 標題、--- 分隔線、``` 程式碼區塊、__ 底線
+// 只清 LINE 無法渲染的，保留 LINE 能正常顯示的格式
 function stripMarkdown(text) {
   if (!text) return text;
   return text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')   // **粗體** → 純文字
-    .replace(/\*([^*]+)\*/g, '$1')        // *斜體* → 純文字
-    .replace(/__([^_]+)__/g, '$1')        // __底線__ → 純文字
-    .replace(/_([^_]+)_/g, '$1')          // _斜體_ → 純文字
-    .replace(/^#{1,6}\s+/gm, '')          // # 標題 → 純文字
-    .replace(/^---+$/gm, '')              // --- 分隔線 → 移除
-    .replace(/^===+$/gm, '')              // === 分隔線 → 移除
-    .replace(/`([^`]+)`/g, '$1')          // `code` → 純文字
+    .replace(/^#{1,6}\s+/gm, '')          // # 標題 → 純文字（LINE 不支援）
+    .replace(/^---+$/gm, '')              // --- 分隔線 → 移除（LINE 不支援）
+    .replace(/^===+$/gm, '')              // === 分隔線 → 移除（LINE 不支援）
+    .replace(/^_{3,}$/gm, '')             // ___ 分隔線 → 移除（LINE 不支援）
+    .replace(/```[\s\S]*?```/g, '')       // ```程式碼區塊``` → 移除（LINE 不支援）
+    .replace(/__([^_]+)__/g, '$1')        // __底線__ → 純文字（LINE 不支援，用 ** 代替）
     .replace(/\n{3,}/g, '\n\n')           // 多餘空行壓縮
     .trim();
 }
