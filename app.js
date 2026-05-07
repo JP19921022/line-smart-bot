@@ -2179,11 +2179,11 @@ const personaInstruction = (() => {
       path.resolve(__dirname, 'memory/style/健平-溝通風格.md'),
       'utf8'
     );
-    // 只截取到「三、真實對話範例庫」之前，避免 token 過多
-    const cutMarker = '## 三、真實對話範例庫';
+    // 截取到「四、小平目前需要強化的點」之前（保留範例庫，跳過改進清單和更新紀錄）
+    const cutMarker = '## 四、小平目前需要強化的點';
     const cutIdx = styleFull.indexOf(cutMarker);
     const styleCore = cutIdx !== -1 ? styleFull.slice(0, cutIdx).trim() : styleFull;
-    console.log('[persona] 已載入健平溝通風格記憶庫（靈魂層＋原則＋詞彙庫）');
+    console.log('[persona] 已載入健平溝通風格記憶庫（靈魂層＋原則＋詞彙庫＋真實對話範例）');
     return persona + '\n\n---\n\n# 健平真實溝通風格（從客戶對話中學習，高優先級）\n\n' + styleCore;
   } catch (e) {
     console.warn('[persona] 找不到溝通風格記憶庫，僅使用 persona.md：', e.message);
