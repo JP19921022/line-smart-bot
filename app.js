@@ -973,8 +973,25 @@ function logUserSource(event) {
   }
 }
 
+// LINE 不支援 Markdown，AI 輸出送出前一律清理
+function stripMarkdown(text) {
+  if (!text) return text;
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // **粗體** → 純文字
+    .replace(/\*([^*]+)\*/g, '$1')        // *斜體* → 純文字
+    .replace(/__([^_]+)__/g, '$1')        // __底線__ → 純文字
+    .replace(/_([^_]+)_/g, '$1')          // _斜體_ → 純文字
+    .replace(/^#{1,6}\s+/gm, '')          // # 標題 → 純文字
+    .replace(/^---+$/gm, '')              // --- 分隔線 → 移除
+    .replace(/^===+$/gm, '')              // === 分隔線 → 移除
+    .replace(/`([^`]+)`/g, '$1')          // `code` → 純文字
+    .replace(/\n{3,}/g, '\n\n')           // 多餘空行壓縮
+    .trim();
+}
+
 function buildResponseMessage(text, quickReply = buildQuickReplyPayload()) {
-  return quickReply ? { type: 'text', text, quickReply } : { type: 'text', text };
+  const clean = stripMarkdown(text);
+  return quickReply ? { type: 'text', text: clean, quickReply } : { type: 'text', text: clean };
 }
 
 // ── 轉達健平顧問確認卡（保單借款 / 受益人變更）────────────────
