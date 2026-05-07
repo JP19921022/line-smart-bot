@@ -2164,12 +2164,30 @@ function formatFundTimestamp(isoString) {
 }
 
 // 從 persona.md 讀取小平的人設（方便直接編輯該檔案新增技能，不需動 app.js）
+// 同時附加健平真實溝通風格記憶庫（截取靈魂層＋原則＋詞彙庫，略去對話範例以節省 token）
 const personaInstruction = (() => {
+  let persona;
   try {
-    return fs.readFileSync(path.resolve(__dirname, 'persona.md'), 'utf8');
+    persona = fs.readFileSync(path.resolve(__dirname, 'persona.md'), 'utf8');
   } catch (e) {
     console.warn('找不到 persona.md，使用預設人設');
-    return '你是「小平」，一位親切專業的保險與基金顧問助手，使用繁體中文回覆。';
+    persona = '你是「小平」，一位親切專業的保險與基金顧問助手，使用繁體中文回覆。';
+  }
+
+  try {
+    const styleFull = fs.readFileSync(
+      path.resolve(__dirname, 'memory/style/健平-溝通風格.md'),
+      'utf8'
+    );
+    // 只截取到「三、真實對話範例庫」之前，避免 token 過多
+    const cutMarker = '## 三、真實對話範例庫';
+    const cutIdx = styleFull.indexOf(cutMarker);
+    const styleCore = cutIdx !== -1 ? styleFull.slice(0, cutIdx).trim() : styleFull;
+    console.log('[persona] 已載入健平溝通風格記憶庫（靈魂層＋原則＋詞彙庫）');
+    return persona + '\n\n---\n\n# 健平真實溝通風格（從客戶對話中學習，高優先級）\n\n' + styleCore;
+  } catch (e) {
+    console.warn('[persona] 找不到溝通風格記憶庫，僅使用 persona.md：', e.message);
+    return persona;
   }
 })();
 
