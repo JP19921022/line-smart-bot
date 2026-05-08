@@ -2321,46 +2321,56 @@ app.get('/survey-track.html', (req, res) => {
   return res.type('html').send(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>保險需求小問卷</title><style>body{font-family:'Noto Sans TC',sans-serif;background:#f3f4f6;margin:0;padding:16px}.box{max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 8px 24px rgba(15,23,42,.08)}h1{font-size:1.35rem;margin-bottom:8px}.desc{color:#4b5563;line-height:1.6}.opt{margin:6px 0}label{display:block;margin:16px 0 8px;font-weight:600}button{width:100%;margin-top:24px;padding:14px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700}.consent{font-size:.85rem;color:#6b7280;margin-top:16px;line-height:1.4}#msg{margin-top:12px;color:#2563eb;font-weight:600}</style></head><body><div class="box"><h1>保險需求小問卷（約 1 分鐘）</h1><p class="desc">健平想聽聽你的想法，這份問卷只要 1 分鐘。回覆後我會依照你的需求，提供個人化的建議與最新保單整理資訊。</p><form id="f"><label>1. 你是否已經和健平購買過保險？</label><div class="opt"><input type="radio" name="q1" value="yes" required> 是</div><div class="opt"><input type="radio" name="q1" value="no"> 否</div><label>2. 你對自己的保險了解程度如何？</label><div class="opt"><input type="radio" name="q2" value="clear" required> 很清楚（完全掌握）</div><div class="opt"><input type="radio" name="q2" value="mid"> 一般（概略知道）</div><div class="opt"><input type="radio" name="q2" value="unclear"> 不太清楚（需要協助）</div><label>3. 你是否希望健平協助更新 / 整理你的保單資訊？</label><div class="opt"><input type="radio" name="q3" value="yes_now" required> 非常願意，我需要協助</div><div class="opt"><input type="radio" name="q3" value="maybe"> 可以看看情況</div><div class="opt"><input type="radio" name="q3" value="no_need"> 我自己很了解，暫時不用</div><button type="submit">送出問卷</button><div class="consent">我了解並同意：這份問卷僅用於提供保險建議與服務優化。若不希望後續收到健平的連繫，可隨時回覆「停止」或通知客服。</div><div id="msg"></div></form></div><script>const uid=new URLSearchParams(location.search).get('uid')||'';document.getElementById('f').addEventListener('submit',async(e)=>{e.preventDefault();if(!uid){document.getElementById('msg').textContent='缺少 uid，請從原始訊息連結開啟。';return;}const fd=new FormData(e.target);const payload={userId:uid,uid,surveyId:'survey_reengage_v2',answers:{q1:fd.get('q1'),q2:fd.get('q2'),q3:fd.get('q3')}};const r=await fetch('/api/survey-track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const j=await r.json();document.getElementById('msg').textContent=(r.ok&&j.ok)?'感謝你的回覆！我會依照答案整理建議，稍後與你聯繫。':'送出失敗，請稍後再試。';if(r.ok&&j.ok)e.target.reset();});</script></body></html>`);
 });
 
-app.post('/api/survey-track', express.json(), (req, res) => {
+app.post('/api/survey-track', express.json(), async (req, res) => {
   try {
     const userId = String(req.body?.userId || req.body?.uid || '').trim();
     if (!userId) return res.status(400).json({ ok: false, error: 'userId required' });
 
-    const payload = {
-      userId,
-      score: Number(req.body?.score ?? NaN),
-      note: String(req.body?.note || '').trim(),
-      answers: req.body?.answers || req.body?.data || null,
-      submittedAt: new Date().toISOString()
+    const submittedAt = new Date().toISOString();
+    const sbRow = {
+      user_id:      userId,
+      answers:      req.body?.answers || req.body?.data || null,
+      score:        Number(req.body?.score ?? NaN) || null,
+      note:         String(req.body?.note || '').trim().slice(0, 200),
+      submitted_at: submittedAt,
+      ip:           (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').slice(0, 64)
     };
 
-    const responses = fs.existsSync(SURVEY_RESPONSES_FILE)
-      ? JSON.parse(fs.readFileSync(SURVEY_RESPONSES_FILE, 'utf8') || '[]')
-      : [];
-    responses.push(payload);
-    fs.writeFileSync(SURVEY_RESPONSES_FILE, JSON.stringify(responses, null, 2), 'utf8');
-
-    const contacts = fs.existsSync(CONTACTS_FILE)
-      ? JSON.parse(fs.readFileSync(CONTACTS_FILE, 'utf8') || '[]')
-      : [];
-    const idx = contacts.findIndex(c => c.userId === userId);
-    if (idx >= 0) {
-      contacts[idx].last_contact_at = payload.submittedAt;
-      contacts[idx].survey_last_at = payload.submittedAt;
-      if (payload.note) contacts[idx].survey_last_note = payload.note.slice(0, 200);
+    // ── 主要儲存：Supabase（永久保存，Render 重啟不遺失）──
+    const sb = require('./supabaseClient');
+    if (sb) {
+      const { error: sbErr } = await sb.from('survey_responses').insert(sbRow);
+      if (sbErr) console.error('survey supabase insert error:', sbErr.message || sbErr);
     } else {
-      contacts.push({
-        userId,
-        name: '新客戶',
-        enabled: true,
-        last_contact_at: payload.submittedAt,
-        survey_last_at: payload.submittedAt,
-        survey_last_note: payload.note.slice(0, 200)
-      });
+      console.warn('survey-track: supabase not configured, falling back to local JSON');
     }
-    fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8');
 
-    return res.json({ ok: true, userId, submittedAt: payload.submittedAt });
+    // ── 備援：本機 JSON（Render 上是暫時性，僅作 fallback）──
+    try {
+      const arr = fs.existsSync(SURVEY_RESPONSES_FILE)
+        ? JSON.parse(fs.readFileSync(SURVEY_RESPONSES_FILE, 'utf8') || '[]') : [];
+      arr.push({ userId, ...sbRow, submittedAt });
+      fs.writeFileSync(SURVEY_RESPONSES_FILE, JSON.stringify(arr, null, 2), 'utf8');
+    } catch (_) {}
+
+    // ── 更新 contacts.json（記錄最後問卷時間）──
+    try {
+      const contacts = fs.existsSync(CONTACTS_FILE)
+        ? JSON.parse(fs.readFileSync(CONTACTS_FILE, 'utf8') || '[]') : [];
+      const idx = contacts.findIndex(c => c.userId === userId);
+      if (idx >= 0) {
+        contacts[idx].last_contact_at = submittedAt;
+        contacts[idx].survey_last_at  = submittedAt;
+        if (sbRow.note) contacts[idx].survey_last_note = sbRow.note;
+      } else {
+        contacts.push({ userId, name: '新客戶', enabled: true,
+          last_contact_at: submittedAt, survey_last_at: submittedAt,
+          survey_last_note: sbRow.note });
+      }
+      fs.writeFileSync(CONTACTS_FILE, JSON.stringify(contacts, null, 2), 'utf8');
+    } catch (_) {}
+
+    return res.json({ ok: true, userId, submittedAt });
   } catch (err) {
     console.error('survey-track error:', err);
     return res.status(500).json({ ok: false, error: 'internal_error' });

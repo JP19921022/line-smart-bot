@@ -617,80 +617,132 @@ app.get('/api/admin-status', (req, res) => {
   res.json({ ok: token === ADMIN_TOKEN, uiVersion: getUiVersion(), prodLock: isProdLocked() });
 });
 
-app.post('/api/survey-track', (req, res) => {
+app.post('/api/survey-track', async (req, res) => {
   try {
     const userId = String(req.body?.userId || req.body?.uid || '').trim();
     if (!userId) return res.status(400).json({ ok: false, error: 'userId required' });
 
-    const payload = {
-      userId,
-      answers: req.body?.answers || req.body?.data || null,
-      score: Number(req.body?.score ?? NaN),
-      note: String(req.body?.note || '').trim(),
-      submittedAt: new Date().toISOString(),
-      ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || ''
+    const submittedAt = new Date().toISOString();
+    const sbRow = {
+      user_id:      userId,
+      answers:      req.body?.answers || req.body?.data || null,
+      score:        Number(req.body?.score ?? NaN) || null,
+      note:         String(req.body?.note || '').trim().slice(0, 200),
+      submitted_at: submittedAt,
+      ip:           (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').slice(0, 64)
     };
 
-    const responses = readJson(SURVEY_RESPONSES_FILE, []);
-    responses.push(payload);
-    writeJson(SURVEY_RESPONSES_FILE, responses);
-
-    const contacts = readJson(CONTACTS_FILE, []);
-    const idx = contacts.findIndex(c => c.userId === userId);
-    if (idx >= 0) {
-      contacts[idx].last_contact_at = payload.submittedAt;
-      contacts[idx].survey_last_at = payload.submittedAt;
-      if (payload.note) contacts[idx].survey_last_note = payload.note.slice(0, 200);
-    } else {
-      contacts.push({
-        userId,
-        name: '新客戶',
-        enabled: true,
-        last_contact_at: payload.submittedAt,
-        survey_last_at: payload.submittedAt,
-        survey_last_note: payload.note.slice(0, 200)
-      });
+    // ── 主要儲存：Supabase ──
+    if (supabase) {
+      const { error: sbErr } = await supabase.from('survey_responses').insert(sbRow);
+      if (sbErr) console.error('survey supabase insert error:', sbErr.message || sbErr);
     }
-    writeJson(CONTACTS_FILE, contacts);
 
-    res.json({ ok: true, userId, submittedAt: payload.submittedAt });
+    // ── 備援：本機 JSON ──
+    try {
+      const arr = readJson(SURVEY_RESPONSES_FILE, []);
+      arr.push({ userId, ...sbRow, submittedAt });
+      writeJson(SURVEY_RESPONSES_FILE, arr);
+    } catch (_) {}
+
+    // ── 更新 contacts.json ──
+    try {
+      const contacts = readJson(CONTACTS_FILE, []);
+      const idx = contacts.findIndex(c => c.userId === userId);
+      if (idx >= 0) {
+        contacts[idx].last_contact_at = submittedAt;
+        contacts[idx].survey_last_at  = submittedAt;
+        if (sbRow.note) contacts[idx].survey_last_note = sbRow.note;
+      } else {
+        contacts.push({ userId, name: '新客戶', enabled: true,
+          last_contact_at: submittedAt, survey_last_at: submittedAt,
+          survey_last_note: sbRow.note });
+      }
+      writeJson(CONTACTS_FILE, contacts);
+    } catch (_) {}
+
+    res.json({ ok: true, userId, submittedAt });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
-// 個別問卷回覆清單
-app.get('/api/survey-responses', requireAdmin, (req, res) => {
+// ── 個別問卷回覆清單（優先從 Supabase 讀，fallback 到本機 JSON）──
+app.get('/api/survey-responses', requireAdmin, async (req, res) => {
   try {
-    const rows = readJson(SURVEY_RESPONSES_FILE, []);
-    const contacts = readJson(CONTACTS_FILE, []);
-    // 附上姓名
-    const enriched = rows.map(r => {
-      const c = contacts.find(x => x.userId === r.userId);
-      return { ...r, name: c?.name || '' };
-    });
-    // 最新在前
-    enriched.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-    res.json({ ok: true, total: enriched.length, rows: enriched });
+    let rows = [];
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('survey_responses')
+        .select('*')
+        .order('submitted_at', { ascending: false })
+        .limit(500);
+      if (error) throw new Error(error.message);
+      // 統一欄位名稱與本機 JSON 格式相容
+      const contacts = readJson(CONTACTS_FILE, []);
+      rows = (data || []).map(r => {
+        const c = contacts.find(x => x.userId === r.user_id);
+        return {
+          userId:      r.user_id,
+          answers:     r.answers,
+          score:       r.score,
+          note:        r.note,
+          submittedAt: r.submitted_at,
+          ip:          r.ip,
+          name:        c?.name || ''
+        };
+      });
+    } else {
+      // fallback：本機 JSON
+      const localRows = readJson(SURVEY_RESPONSES_FILE, []);
+      const contacts  = readJson(CONTACTS_FILE, []);
+      rows = localRows
+        .map(r => ({ ...r, name: contacts.find(x => x.userId === r.userId)?.name || '' }))
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    }
+    res.json({ ok: true, total: rows.length, rows });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
-app.get('/api/survey-stats', requireAdmin, (req, res) => {
+app.get('/api/survey-stats', requireAdmin, async (req, res) => {
   try {
     const days = Math.max(1, Math.min(30, Number(req.query.days || 7)));
-    const rows = readJson(SURVEY_RESPONSES_FILE, []);
-    const now = new Date();
+    const now  = new Date();
+    let rows = [];
+
+    if (supabase) {
+      const since = new Date(now.getTime() - days * 86400000).toISOString();
+      const { data, error } = await supabase
+        .from('survey_responses')
+        .select('submitted_at')
+        .gte('submitted_at', since);
+      if (error) throw new Error(error.message);
+      rows = (data || []).map(r => ({ submittedAt: r.submitted_at }));
+    } else {
+      rows = readJson(SURVEY_RESPONSES_FILE, []);
+    }
+
     const trend = [];
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 86400000);
+      const d   = new Date(now.getTime() - i * 86400000);
       const key = toDateTW(d);
       trend.push({ date: key, count: rows.filter(x => toDateTW(x.submittedAt) === key).length });
     }
-    const today = toDateTW(now);
+    const today      = toDateTW(now);
     const todayCount = trend.find(x => x.date === today)?.count || 0;
-    res.json({ ok: true, todayCount, trend, total: rows.length });
+
+    // total 從 Supabase count 取得
+    let total = rows.length;
+    if (supabase) {
+      const { count } = await supabase
+        .from('survey_responses')
+        .select('*', { count: 'exact', head: true });
+      if (count != null) total = count;
+    }
+
+    res.json({ ok: true, todayCount, trend, total });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
