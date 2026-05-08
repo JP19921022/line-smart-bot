@@ -957,6 +957,7 @@
       <button class="tab-btn" onclick="switchTab('calendar')">📅 行事曆</button>
       <button class="tab-btn" onclick="switchTab('broadcast')">📈 群發記錄</button>
       <button class="tab-btn" onclick="switchTab('rules')">⚙️ 規則</button>
+      <button class="tab-btn" onclick="switchTab('survey');loadSurveyResponses()">📝 問卷回覆</button>
     </div>
 
     <!-- Tab: 任務明細 -->
@@ -1081,6 +1082,34 @@
         <button class="btn btn-ghost btn-sm" onclick="applyRulePreset('conservative')">保守版</button>
         <button class="btn btn-ghost btn-sm" onclick="applyRulePreset('balanced')">平衡版</button>
         <button class="btn btn-ghost btn-sm" onclick="applyRulePreset('aggressive')">積極版</button>
+      </div>
+    </div>
+
+    <!-- Tab: 問卷回覆 -->
+    <div class="panel tab-content" id="tab-survey" style="padding:22px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+        <div class="panel-title" style="margin:0"><div class="panel-title-icon">📝</div>問卷回覆明細</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="small" id="surveyTotal" style="color:var(--muted)">共 0 筆</span>
+          <input id="surveyFilter" placeholder="篩選姓名 / userId" style="width:180px;font-size:12px" oninput="filterSurveyRows()"/>
+          <button class="btn btn-ghost btn-sm" onclick="loadSurveyResponses()">↻ 重整</button>
+        </div>
+      </div>
+      <!-- 統計摘要 -->
+      <div id="surveySummaryRow" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px"></div>
+      <!-- 明細表格 -->
+      <div style="overflow-x:auto">
+        <table class="tbl" id="surveyTbl" style="min-width:720px">
+          <thead><tr>
+            <th style="width:130px">時間</th>
+            <th style="width:90px">姓名</th>
+            <th style="width:80px">已購保險</th>
+            <th style="width:100px">了解程度</th>
+            <th style="width:130px">希望協助更新</th>
+            <th>備註</th>
+          </tr></thead>
+          <tbody id="surveyTbody"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">點擊 Tab 後自動載入…</td></tr></tbody>
+        </table>
       </div>
     </div>
 
@@ -1339,6 +1368,68 @@ async function editTagsPrompt(userId, currentTags){
   else showToast('❌ 更新失敗：'+(rs.error||'unknown'),'err');
 }
 async function loadContacts(){const list=await j('/api/contacts');document.getElementById('contacts').innerHTML='<table class="tbl"><tr><th>UserId</th><th>姓名</th><th>enabled</th><th>手動聊天</th><th>操作</th><th>標籤</th><th>last_contact_at</th><th>時間軸</th></tr>'+list.map(x=>`<tr><td>${x.userId||''}</td><td>${x.name||''}</td><td>${x.enabled}</td><td>${x.manual_mode?'✅':'—'}</td><td>${x.manual_mode?`<button class='btn' onclick="toggleManual('${x.userId}',false)">結束手動</button>`:`<button class='btn warn' onclick="toggleManual('${x.userId}',true)">使用手動</button>`}</td><td style="min-width:120px">${renderTagsCell(x.tags)} <button class='btn btn-sm' style='margin-left:4px' onclick='editTagsPrompt(${JSON.stringify(x.userId)}, ${JSON.stringify(x.tags||[])})'>✎</button></td><td>${x.last_contact_at||''}</td><td><button class='btn' onclick="showTimeline('${x.userId}')">時間軸</button></td></tr>`).join('')+'</table>'}
+// ── 問卷回覆 ────────────────────────────────────────────────
+const Q1_MAP = { yes:'✅ 是', no:'❌ 否' };
+const Q2_MAP = { clear:'很清楚', mid:'一般', unclear:'不太清楚（需協助）' };
+const Q3_MAP = { yes_now:'非常願意', maybe:'看情況', no_need:'暫時不用' };
+const Q3_COLOR = { yes_now:'var(--ok)', maybe:'var(--warn)', no_need:'var(--muted)' };
+let _surveyRows = [];
+async function loadSurveyResponses(){
+  try{
+    const rs = await j('/api/survey-responses');
+    _surveyRows = rs.rows || [];
+    document.getElementById('surveyTotal').innerText = `共 ${rs.total} 筆`;
+    renderSurveyTable(_surveyRows);
+    renderSurveySummary(_surveyRows);
+  }catch(e){ showToast('載入問卷失敗','err'); }
+}
+function renderSurveySummary(rows){
+  const total = rows.length;
+  const needHelp = rows.filter(r => r.answers?.q3 === 'yes_now').length;
+  const noInsurance = rows.filter(r => r.answers?.q1 === 'no').length;
+  const unclear = rows.filter(r => r.answers?.q2 === 'unclear').length;
+  document.getElementById('surveySummaryRow').innerHTML = `
+    <div class="inner-panel" style="flex:1;min-width:130px;text-align:center">
+      <div style="font-size:26px;font-weight:700;font-family:var(--mono);color:var(--ink)">${total}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-family:var(--mono)">總回覆數</div>
+    </div>
+    <div class="inner-panel" style="flex:1;min-width:130px;text-align:center">
+      <div style="font-size:26px;font-weight:700;font-family:var(--mono);color:var(--ok)">${needHelp}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-family:var(--mono)">非常願意協助</div>
+    </div>
+    <div class="inner-panel" style="flex:1;min-width:130px;text-align:center">
+      <div style="font-size:26px;font-weight:700;font-family:var(--mono);color:var(--warn)">${unclear}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-family:var(--mono)">保險不太清楚</div>
+    </div>
+    <div class="inner-panel" style="flex:1;min-width:130px;text-align:center">
+      <div style="font-size:26px;font-weight:700;font-family:var(--mono);color:var(--err)">${noInsurance}</div>
+      <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-family:var(--mono)">尚未購買保險</div>
+    </div>`;
+}
+function renderSurveyTable(rows){
+  const tbody = document.getElementById('surveyTbody');
+  if(!rows.length){ tbody.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">尚無問卷回覆</td></tr>'; return; }
+  tbody.innerHTML = rows.map(r=>{
+    const a = r.answers || {};
+    const q3color = Q3_COLOR[a.q3] || 'var(--muted)';
+    return `<tr>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--muted)">${fmtTS(r.submittedAt)}</td>
+      <td style="font-weight:600">${r.name || '<span style="color:var(--muted2);font-size:11px">'+r.userId.slice(0,8)+'…</span>'}</td>
+      <td style="text-align:center">${Q1_MAP[a.q1]||'—'}</td>
+      <td>${Q2_MAP[a.q2]||'—'}</td>
+      <td style="color:${q3color};font-weight:600">${Q3_MAP[a.q3]||'—'}</td>
+      <td style="color:var(--muted);font-size:12px">${r.note||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+function filterSurveyRows(){
+  const kw = (document.getElementById('surveyFilter')?.value||'').toLowerCase();
+  if(!kw){ renderSurveyTable(_surveyRows); return; }
+  renderSurveyTable(_surveyRows.filter(r=>
+    (r.name||'').toLowerCase().includes(kw) ||
+    (r.userId||'').toLowerCase().includes(kw)
+  ));
+}
 async function loadRules(){const rs=await j('/api/rules');document.getElementById('rulesEditor').value=JSON.stringify(rs,null,2);}
 async function saveRules(){try{const parsed=JSON.parse(document.getElementById('rulesEditor').value||'{}');const rs=await j('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(parsed)});showToast(rs.ok?'rules 已儲存':'儲存失敗');await loadRules();}catch(e){showToast('❌ rules JSON 格式錯誤','err');}}
 async function applyRulePreset(mode){const base=await j('/api/rules');const preset={single:{pickCount:1,dailyLimitPerUser:1,minHoursBetweenCare:24,emergencyDailyLimitCap:30,requireEnabled:true},conservative:{pickCount:3,dailyLimitPerUser:1,minHoursBetweenCare:36,emergencyDailyLimitCap:60,requireEnabled:true},balanced:{pickCount:5,dailyLimitPerUser:1,minHoursBetweenCare:24,emergencyDailyLimitCap:120,requireEnabled:true},aggressive:{pickCount:8,dailyLimitPerUser:1,minHoursBetweenCare:12,emergencyDailyLimitCap:200,requireEnabled:true}}[mode]||{};const rs=await j('/api/rules',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...base,...preset})});if(rs.ok){showToast(`✅ 已套用${mode==='single'?'單人定聯':mode==='conservative'?'保守':mode==='balanced'?'平衡':'積極'}版`,'ok');await loadRules();}}

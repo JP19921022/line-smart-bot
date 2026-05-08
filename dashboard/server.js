@@ -81,11 +81,36 @@ function writeJson(file, data) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
 }
-function toDateTW(d) { return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
-function todayTW() { return toDateTW(new Date()); }
-function toTW(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
+const LINE_PROFILE_CACHE_TTL_MS = 10 * 60 * 1000;
+const LINE_PROFILE_LOOKUP_TIMEOUT_MS = 2500;
+const lineProfileCache = new Map();
+
+function normalizeDateInput(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return null;
+    const d = new Date(text);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+function toDateTW(value) {
+  const d = normalizeDateInput(value);
+  if (!d) return null;
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+}
+
+function todayTW() { return toDateTW(new Date()) || ''; }
+
+function toTW(value) {
+  const d = normalizeDateInput(value);
+  if (!d) return null;
   return new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(d);
 }
 
@@ -142,17 +167,84 @@ function getGlobalManual() {
 function setGlobalManual(enabled) {
   writeJson(GLOBAL_MANUAL_FILE, { enabled: Boolean(enabled), updated_at: new Date().toISOString() });
 }
-function getUiVersion(){
-  try { return fs.readFileSync(UI_VERSION_FILE,'utf8').trim() || 'unknown'; } catch { return 'unknown'; }
-}
-function isProdLocked(){
-  try { return !fs.existsSync(PROD_LOCK_FILE) || fs.readFileSync(PROD_LOCK_FILE,'utf8').trim() !== 'off'; } catch { return true; }
-}
-function getUiVersion(){
+
+function getUiVersion() {
   try { return fs.readFileSync(UI_VERSION_FILE, 'utf8').trim() || 'unknown'; } catch { return 'unknown'; }
 }
-function isProdLocked(){
-  try { return fs.existsSync(PROD_LOCK_FILE) && fs.readFileSync(PROD_LOCK_FILE,'utf8').trim() !== 'off'; } catch { return true; }
+
+function isProdLocked() {
+  // 缺 lock file 時預設視為 locked，避免 release 保護被意外繞過。
+  try { return !fs.existsSync(PROD_LOCK_FILE) || fs.readFileSync(PROD_LOCK_FILE, 'utf8').trim() !== 'off'; } catch { return true; }
+}
+
+function requireAdminExportToken(res) {
+  if (ADMIN_EXPORT_TOKEN) return true;
+  res.status(503).json({ ok: false, error: 'ADMIN_EXPORT_TOKEN missing' });
+  return false;
+}
+
+function readLineToken() {
+  return linePush?.loadToken?.() || '';
+}
+
+function getCachedLineDisplayName(userId) {
+  const cached = lineProfileCache.get(userId);
+  if (!cached) return null;
+  if ((Date.now() - cached.at) > LINE_PROFILE_CACHE_TTL_MS) {
+    lineProfileCache.delete(userId);
+    return null;
+  }
+  return cached.name;
+}
+
+async function fetchLineDisplayName(userId) {
+  if (!userId) return null;
+  const cached = getCachedLineDisplayName(userId);
+  if (cached) return cached;
+
+  const token = readLineToken();
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(LINE_PROFILE_LOOKUP_TIMEOUT_MS)
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const displayName = String(payload?.displayName || '').trim();
+    if (!displayName) return null;
+    lineProfileCache.set(userId, { name: displayName, at: Date.now() });
+    return displayName;
+  } catch {
+    return null;
+  }
+}
+
+async function hydrateMissingDisplayNames(rows, { placeholder = '新客戶', maxLookups = 20, concurrency = 4 } = {}) {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const safeMaxLookups = Math.max(0, Number(maxLookups || 0)) || 0;
+  const safeConcurrency = Math.max(1, Number(concurrency || 1)) || 1;
+  const missing = [];
+
+  for (const row of rows) {
+    if (!row?.userId || (row.name && row.name !== placeholder)) continue;
+    const cached = getCachedLineDisplayName(row.userId);
+    if (cached) {
+      row.name = cached;
+      continue;
+    }
+    missing.push(row);
+  }
+
+  const targets = missing.slice(0, safeMaxLookups);
+  for (let i = 0; i < targets.length; i += safeConcurrency) {
+    const batch = targets.slice(i, i + safeConcurrency);
+    const names = await Promise.all(batch.map(row => fetchLineDisplayName(row.userId)));
+    batch.forEach((row, index) => {
+      if (names[index]) row.name = names[index];
+    });
+  }
 }
 
 function syncCustomersFromContacts() {
@@ -567,6 +659,24 @@ app.post('/api/survey-track', (req, res) => {
   }
 });
 
+// 個別問卷回覆清單
+app.get('/api/survey-responses', requireAdmin, (req, res) => {
+  try {
+    const rows = readJson(SURVEY_RESPONSES_FILE, []);
+    const contacts = readJson(CONTACTS_FILE, []);
+    // 附上姓名
+    const enriched = rows.map(r => {
+      const c = contacts.find(x => x.userId === r.userId);
+      return { ...r, name: c?.name || '' };
+    });
+    // 最新在前
+    enriched.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+    res.json({ ok: true, total: enriched.length, rows: enriched });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
 app.get('/api/survey-stats', requireAdmin, (req, res) => {
   try {
     const days = Math.max(1, Math.min(30, Number(req.query.days || 7)));
@@ -693,7 +803,10 @@ app.post('/api/layout-presets/apply', requireAdmin, (req, res) => {
 
 app.get('/api/global-manual-mode', requireAdmin, async (req, res) => {
   try {
-    const r = await fetch(`${RENDER_BASE_URL}/admin/global-manual?token=${ADMIN_EXPORT_TOKEN}`);
+    if (!requireAdminExportToken(res)) return;
+    const r = await fetch(`${RENDER_BASE_URL}/admin/global-manual?token=${ADMIN_EXPORT_TOKEN}`, {
+      signal: AbortSignal.timeout(8000)
+    });
     const j = await r.json();
     if (!r.ok) return res.status(r.status).json({ ok:false, error:j.error || 'remote error' });
     return res.json({ enabled: Boolean(j.enabled) });
@@ -704,10 +817,12 @@ app.get('/api/global-manual-mode', requireAdmin, async (req, res) => {
 
 app.post('/api/global-manual-mode', requireAdmin, async (req, res) => {
   try {
+    if (!requireAdminExportToken(res)) return;
     const enabled = Boolean(req.body?.enabled);
     const r = await fetch(`${RENDER_BASE_URL}/admin/global-manual?token=${ADMIN_EXPORT_TOKEN}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(8000),
       body: JSON.stringify({ enabled })
     });
     const j = await r.json();
@@ -834,30 +949,7 @@ app.get('/api/today-care', requireAdmin, async (req, res) => {
     }
   }
 
-  // fallback: fetch LINE profile displayName for unknown names
-  try {
-    let token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-    if (!token) {
-      const envPath = path.join(ROOT, '.env');
-      if (fs.existsSync(envPath)) {
-        const txt = fs.readFileSync(envPath, 'utf8');
-        const m = txt.match(/^LINE_CHANNEL_ACCESS_TOKEN=(.*)$/m);
-        if (m) token = m[1].trim().replace(/^"|"$/g, '');
-      }
-    }
-
-    if (token) {
-      for (const r of uniq) {
-        if (!r.userId || (r.name && r.name !== '新客戶')) continue;
-        const pr = await fetch(`https://api.line.me/v2/bot/profile/${r.userId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!pr.ok) continue;
-        const pd = await pr.json();
-        if (pd?.displayName) r.name = pd.displayName;
-      }
-    }
-  } catch {}
+  try { await hydrateMissingDisplayNames(uniq, { maxLookups: 30, concurrency: 4 }); } catch {}
 
   uniq.sort((a,b) => String(b.iso||'').localeCompare(String(a.iso||'')));
   res.json(uniq);
@@ -1008,20 +1100,24 @@ app.get('/api/crm/activities', requireAdmin, async (req, res) => {
 
   // 1. 從 Render 拉摘要（主要來源）
   try {
-    const renderRes = await fetch(
-      `${RENDER_BASE_URL}/admin/line-summaries?token=${ADMIN_EXPORT_TOKEN}`,
-      { signal: AbortSignal.timeout(10000) }
-    );
-    if (renderRes.ok) {
-      const rd = await renderRes.json();
-      if (Array.isArray(rd.summaries) && rd.summaries.length > 0) {
-        console.log('[activities] Render 回傳', rd.summaries.length, '筆');
-        mergeRows(rd.summaries, buildMap());
+    if (ADMIN_EXPORT_TOKEN) {
+      const renderRes = await fetch(
+        `${RENDER_BASE_URL}/admin/line-summaries?token=${ADMIN_EXPORT_TOKEN}`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (renderRes.ok) {
+        const rd = await renderRes.json();
+        if (Array.isArray(rd.summaries) && rd.summaries.length > 0) {
+          console.log('[activities] Render 回傳', rd.summaries.length, '筆');
+          mergeRows(rd.summaries, buildMap());
+        } else {
+          console.log('[activities] Render 回傳 0 筆或格式不符:', JSON.stringify(rd).slice(0,100));
+        }
       } else {
-        console.log('[activities] Render 回傳 0 筆或格式不符:', JSON.stringify(rd).slice(0,100));
+        console.log('[activities] Render 回應 HTTP', renderRes.status);
       }
     } else {
-      console.log('[activities] Render 回應 HTTP', renderRes.status);
+      console.log('[activities] 略過 Render，同步 token 未設定');
     }
   } catch (e) { console.log('[activities] Render 拉取失敗:', e.message); }
 
@@ -1084,6 +1180,7 @@ app.post('/api/crm/sync-now', requireAdmin, async (req, res) => {
     });
   }
   try {
+    if (!requireAdminExportToken(res)) return;
     const url = `${RENDER_BASE_URL}/admin/line-summaries?token=${ADMIN_EXPORT_TOKEN}`;
     const data = await fetchJson(url);
     const summaries = data.summaries || [];
@@ -1187,27 +1284,7 @@ app.get('/api/top-responders', requireAdmin, async (req, res) => {
     .sort((a, b) => Number(b.activeOnDate) - Number(a.activeOnDate) || String(b.last_contact_at || '').localeCompare(String(a.last_contact_at || '')))
     .slice(0, 20);
 
-  // 新客戶名稱即時補全（從 LINE profile 取 displayName）
-  try {
-    let token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-    if (!token) {
-      const envPath = path.join(ROOT, '.env');
-      if (fs.existsSync(envPath)) {
-        const txt = fs.readFileSync(envPath, 'utf8');
-        const m = txt.match(/^LINE_CHANNEL_ACCESS_TOKEN=(.*)$/m);
-        if (m) token = m[1].trim().replace(/^"|"$/g, '');
-      }
-    }
-    if (token) {
-      for (const r of rows) {
-        if (r.name && r.name !== '新客戶') continue;
-        const p = await fetch(`https://api.line.me/v2/bot/profile/${r.userId}`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!p.ok) continue;
-        const d = await p.json();
-        if (d?.displayName) r.name = d.displayName;
-      }
-    }
-  } catch {}
+  try { await hydrateMissingDisplayNames(rows, { maxLookups: 20, concurrency: 4 }); } catch {}
 
   res.json(rows);
 });
@@ -1257,27 +1334,7 @@ app.get('/api/contacts-live', requireAdmin, async (req, res) => {
 
   const contacts = Array.from(merged.values());
 
-  // 補全「新客戶」名稱（從 LINE API 查詢）
-  try {
-    let lineToken = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-    if (!lineToken) {
-      const envPath = path.join(ROOT, '.env');
-      if (fs.existsSync(envPath)) {
-        const txt = fs.readFileSync(envPath, 'utf8');
-        const m = txt.match(/^LINE_CHANNEL_ACCESS_TOKEN=(.*)$/m);
-        if (m) lineToken = m[1].trim().replace(/^"|"$/g, '');
-      }
-    }
-    if (lineToken) {
-      for (const c of contacts) {
-        if (!c.userId || (c.name && c.name !== '新客戶')) continue;
-        const pr = await fetch(`https://api.line.me/v2/bot/profile/${c.userId}`, { headers: { Authorization: `Bearer ${lineToken}` } });
-        if (!pr.ok) continue;
-        const pd = await pr.json();
-        if (pd?.displayName) c.name = pd.displayName;
-      }
-    }
-  } catch {}
+  try { await hydrateMissingDisplayNames(contacts, { maxLookups: 40, concurrency: 4 }); } catch {}
 
   return res.json({ ok:true, source:'local+render', contacts });
 });
@@ -1535,19 +1592,6 @@ app.get('/api/care-template-messages', requireAdmin, (req, res) => {
     res.status(500).json({ ok:false, error: String(e.message || e) });
   }
 });
-
-function readLineToken() {
-  let token = process.env.LINE_CHANNEL_ACCESS_TOKEN || '';
-  if (!token) {
-    const envPath = path.join(ROOT, '.env');
-    if (fs.existsSync(envPath)) {
-      const txt = fs.readFileSync(envPath, 'utf8');
-      const m = txt.match(/^LINE_CHANNEL_ACCESS_TOKEN=(.*)$/m);
-      if (m) token = m[1].trim().replace(/^"|"$/g, '');
-    }
-  }
-  return token;
-}
 
 app.post('/api/actions/run-care', requireAdmin, (req, res) => {
   if (req.body?.confirm !== 'RUN') return res.status(400).json({ ok: false, error: 'confirm token required' });
