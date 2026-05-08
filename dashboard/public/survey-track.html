@@ -116,23 +116,19 @@ document.getElementById('surveyForm').addEventListener('submit', async (e) => {
   }
 });
 
-/* 預約諮詢：嘗試透過 LIFF 送訊息，否則關閉視窗讓用戶回 LINE 聊天 */
+/* 預約諮詢：直接跳到 LINE 對話視窗並帶入預約文字 */
 function bookConsult() {
-  if (window.liff && typeof window.liff.sendMessages === 'function') {
-    window.liff.sendMessages([{ type: 'text', text: '我想預約諮詢' }])
-      .then(() => window.liff.closeWindow())
-      .catch(() => window.close());
-  } else {
-    // LINE 內建瀏覽器：關閉頁面即回到聊天室，用戶可直接輸入
-    window.close();
-  }
+  const msg = encodeURIComponent('我想預約諮詢');
+  // 優先用 line:// 深層連結（LINE App 內部跳轉），失敗則用 https
+  window.location.href = 'https://line.me/R/oaMessage/@057ucjdq/?' + msg;
 }
 
 function closeWindow() {
-  if (window.liff && typeof window.liff.closeWindow === 'function') {
-    window.liff.closeWindow();
+  // 返回上一頁（LINE 內建瀏覽器會回到聊天室）
+  if (window.history.length > 1) {
+    window.history.back();
   } else {
-    window.close();
+    window.location.href = 'https://line.me/ti/p/@057ucjdq';
   }
 }
 </script>
