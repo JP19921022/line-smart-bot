@@ -1954,7 +1954,20 @@ app.post('/api/manual-broadcast', requireAdmin, async (req, res) => {
     }
 
     // 逐一 push（LINE 有 rate limit，不 parallel）
-    const result = await linePush.pushTextToMany(targets, message);
+    // 若訊息含 {uid}，每人個別替換；否則走一般批次
+    let result;
+    if (message.includes('{uid}')) {
+      let ok = 0, fail = 0, results = [];
+      for (const userId of targets) {
+        const personalMsg = message.replaceAll('{uid}', encodeURIComponent(userId));
+        const r = await linePush.pushText(userId, personalMsg);
+        results.push({ userId, ...r });
+        if (r.ok) ok++; else fail++;
+      }
+      result = { ok, fail, results };
+    } else {
+      result = await linePush.pushTextToMany(targets, message);
+    }
 
     // 寫進既有的 oa_manual_broadcast 稽核 log
     try {

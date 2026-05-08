@@ -5,93 +5,136 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>保險需求小問卷</title>
 <style>
-body { font-family: "Noto Sans TC", sans-serif; background:#f3f4f6; margin:0; padding:16px; }
-.box { max-width:480px; margin:0 auto; background:#fff; border-radius:16px; padding:24px; box-shadow:0 8px 24px rgba(15,23,42,.08); }
-h1 { font-size:1.4rem; margin-bottom:8px; color:#111827; }
-p.desc { color:#4b5563; margin-bottom:20px; line-height:1.6; }
-label { display:block; margin:16px 0 8px; font-weight:600; color:#111827; }
-.opt { margin:6px 0; color:#111827; }
-button { width:100%; margin-top:24px; padding:14px; border:none; border-radius:8px; background:#2563eb; color:#fff; font-size:1rem; font-weight:600; cursor:pointer; }
-.consent { font-size:.85rem; color:#6b7280; margin-top:16px; line-height:1.4; }
-#msg { margin-top:16px; font-weight:600; color:#2563eb; line-height:1.5; }
-.uid { font-size:.8rem; color:#9ca3af; margin-bottom:8px; }
+*{box-sizing:border-box;}
+body{font-family:"Noto Sans TC",sans-serif;background:#f3f4f6;margin:0;padding:16px;}
+.box{max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 8px 24px rgba(15,23,42,.08);}
+h1{font-size:1.4rem;margin:0 0 8px;color:#111827;}
+p.desc{color:#4b5563;margin:0 0 20px;line-height:1.6;}
+label{display:block;margin:16px 0 8px;font-weight:600;color:#111827;}
+.opt{margin:6px 0;color:#111827;display:flex;align-items:center;gap:8px;}
+.opt input{accent-color:#2563eb;width:18px;height:18px;flex-shrink:0;}
+button{width:100%;margin-top:16px;padding:14px;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;transition:opacity .2s;}
+button:disabled{opacity:.55;cursor:not-allowed;}
+#submitBtn{background:#2563eb;color:#fff;}
+.consent{font-size:.82rem;color:#9ca3af;margin-top:16px;line-height:1.5;}
+#msg{margin-top:12px;font-size:.9rem;color:#dc2626;font-weight:500;}
+
+/* 成功畫面 */
+#successBox{display:none;text-align:center;padding:8px 0;}
+.success-icon{font-size:3.5rem;margin-bottom:12px;}
+.success-title{font-size:1.2rem;font-weight:700;color:#111827;margin-bottom:8px;}
+.success-desc{color:#4b5563;line-height:1.6;margin-bottom:28px;font-size:.95rem;}
+#bookBtn{background:#06c755;color:#fff;font-size:1rem;border-radius:10px;display:flex;align-items:center;justify-content:center;gap:8px;}
+#bookBtn:hover{opacity:.88;}
+#closeBtn{background:#f3f4f6;color:#374151;margin-top:10px;font-size:.9rem;}
+#closeBtn:hover{opacity:.78;}
 </style>
 </head>
 <body>
 <div class="box">
- <h1>保險需求小問卷（約 1 分鐘）</h1>
- <p class="desc">健平想聽聽你的想法，這份問卷只要 1 分鐘。回覆後我會依照你的需求，提供個人化的建議與最新保單整理資訊。</p>
- <div class="uid" id="uidBox"></div>
+  <!-- 問卷表單 -->
+  <div id="formBox">
+    <h1>保險需求小問卷</h1>
+    <p class="desc">健平想聽聽你的想法，這份問卷只要 1 分鐘。回覆後我會依照你的需求，提供個人化的建議與最新保單整理資訊。</p>
 
- <form id="surveyForm">
- <label>1. 你是否已經和健平購買過保險？</label>
- <div class="opt"><input type="radio" name="q1" value="yes" required> 是</div>
- <div class="opt"><input type="radio" name="q1" value="no"> 否</div>
+    <form id="surveyForm">
+      <label>1. 你是否已經和健平購買過保險？</label>
+      <div class="opt"><input type="radio" name="q1" value="yes" required><span>是</span></div>
+      <div class="opt"><input type="radio" name="q1" value="no"><span>否</span></div>
 
- <label>2. 你對自己的保險了解程度如何？</label>
- <div class="opt"><input type="radio" name="q2" value="clear" required> 很清楚（完全掌握）</div>
- <div class="opt"><input type="radio" name="q2" value="mid"> 一般（概略知道）</div>
- <div class="opt"><input type="radio" name="q2" value="unclear"> 不太清楚（需要協助）</div>
+      <label>2. 你對自己的保險了解程度如何？</label>
+      <div class="opt"><input type="radio" name="q2" value="clear" required><span>很清楚（完全掌握）</span></div>
+      <div class="opt"><input type="radio" name="q2" value="mid"><span>一般（概略知道）</span></div>
+      <div class="opt"><input type="radio" name="q2" value="unclear"><span>不太清楚（需要協助）</span></div>
 
- <label>3. 你是否希望健平協助更新 / 整理你的保單資訊？</label>
- <div class="opt"><input type="radio" name="q3" value="yes_now" required> 非常願意，我需要協助</div>
- <div class="opt"><input type="radio" name="q3" value="maybe"> 可以看看情況</div>
- <div class="opt"><input type="radio" name="q3" value="no_need"> 我自己很了解，暫時不用</div>
+      <label>3. 你是否希望健平協助更新 / 整理你的保單資訊？</label>
+      <div class="opt"><input type="radio" name="q3" value="yes_now" required><span>非常願意，我需要協助</span></div>
+      <div class="opt"><input type="radio" name="q3" value="maybe"><span>可以看看情況</span></div>
+      <div class="opt"><input type="radio" name="q3" value="no_need"><span>我自己很了解，暫時不用</span></div>
 
- <button type="submit" id="submitBtn">送出問卷</button>
- <div class="consent">我了解並同意：這份問卷僅用於提供保險建議與服務優化。若不希望後續收到健平的連繫，可隨時回覆「停止」或通知客服。</div>
- <div id="msg"></div>
- </form>
+      <button type="submit" id="submitBtn">送出問卷</button>
+      <div class="consent">我了解並同意：這份問卷僅用於提供保險建議與服務優化。若不希望後續收到健平的連繫，可隨時回覆「停止」或通知客服。</div>
+      <div id="msg"></div>
+    </form>
+  </div>
+
+  <!-- 成功畫面（送出後顯示） -->
+  <div id="successBox">
+    <div class="success-icon">🎉</div>
+    <div class="success-title">感謝你的回覆！</div>
+    <p class="success-desc">健平已收到你的回答，<br>會依照你的需求整理保單建議，稍後與你聯繫。</p>
+    <button id="bookBtn" onclick="bookConsult()">
+      <span>💬</span><span>立即預約諮詢</span>
+    </button>
+    <button id="closeBtn" onclick="closeWindow()">關閉頁面</button>
+  </div>
 </div>
 
 <script>
 const uid = new URLSearchParams(location.search).get('uid') || '';
-if (uid) document.getElementById('uidBox').textContent = `識別碼：${uid}`;
-
-const apiUrl = '/api/survey-track';
 
 document.getElementById('surveyForm').addEventListener('submit', async (e) => {
   e.preventDefault();
+
+  const msgEl  = document.getElementById('msg');
+  const btn    = document.getElementById('submitBtn');
+
   if (!uid) {
-    document.getElementById('msg').textContent = '缺少 uid，請從原始訊息連結開啟。';
+    msgEl.textContent = '⚠️ 缺少識別碼，請從 LINE 原始訊息連結開啟。';
     return;
   }
 
   const fd = new FormData(e.target);
   const payload = {
-    userId: uid,
+    userId:   uid,
     uid,
     surveyId: 'survey_reengage_v2',
-    answers: {
-      q1: fd.get('q1'),
-      q2: fd.get('q2'),
-      q3: fd.get('q3')
-    }
+    answers:  { q1: fd.get('q1'), q2: fd.get('q2'), q3: fd.get('q3') }
   };
 
-  const btn = document.getElementById('submitBtn');
-  const msgEl = document.getElementById('msg');
-  btn.disabled = true;
-  btn.textContent = '送出中...';
+  btn.disabled    = true;
+  btn.textContent = '送出中…';
+  msgEl.textContent = '';
 
   try {
-    const res = await fetch(apiUrl, {
-      method: 'POST',
+    const res = await fetch('/api/survey-track', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body:    JSON.stringify(payload)
     });
     const j = await res.json();
     if (!res.ok || !j.ok) throw new Error(j.error || '送出失敗，請稍後再試');
 
-    msgEl.innerHTML = '感謝你的回覆！我會依照答案整理建議，稍後與你聯繫。<br>如需立即協助，可直接回覆這則訊息或點擊「預約諮詢」。';
-    e.target.reset();
+    // 切換到成功畫面
+    document.getElementById('formBox').style.display = 'none';
+    document.getElementById('successBox').style.display = 'block';
+
   } catch (err) {
     msgEl.textContent = err.message || '送出失敗，請稍後再試。';
-  } finally {
-    btn.disabled = false;
+    btn.disabled    = false;
     btn.textContent = '送出問卷';
   }
 });
+
+/* 預約諮詢：嘗試透過 LIFF 送訊息，否則關閉視窗讓用戶回 LINE 聊天 */
+function bookConsult() {
+  if (window.liff && typeof window.liff.sendMessages === 'function') {
+    window.liff.sendMessages([{ type: 'text', text: '我想預約諮詢' }])
+      .then(() => window.liff.closeWindow())
+      .catch(() => window.close());
+  } else {
+    // LINE 內建瀏覽器：關閉頁面即回到聊天室，用戶可直接輸入
+    window.close();
+  }
+}
+
+function closeWindow() {
+  if (window.liff && typeof window.liff.closeWindow === 'function') {
+    window.liff.closeWindow();
+  } else {
+    window.close();
+  }
+}
 </script>
 </body>
 </html>
